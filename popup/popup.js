@@ -4,6 +4,7 @@ class WooScraperUI {
         this.products = new Map();
         this.initializeElements();
         this.attachEventListeners();
+        this.updateProgressBar(0);
     }
 
     initializeElements() {
@@ -12,7 +13,7 @@ class WooScraperUI {
         this.categoryInput = document.getElementById('categoryInput');
         this.categoryChips = document.getElementById('categoryChips');
         this.productList = document.getElementById('productList');
-        this.progressBar = document.getElementById('progressBar');
+        this.progressBar = document.querySelector('.progress-bar-fill');
         this.statusText = document.getElementById('statusText');
     }
 
@@ -20,21 +21,26 @@ class WooScraperUI {
         this.startButton.addEventListener('click', () => this.startScraping());
         this.exportButton.addEventListener('click', () => this.exportData());
         this.categoryInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.addCategory(this.categoryInput.value);
+            if (e.key === 'Enter' && this.categoryInput.value.trim()) {
+                this.addCategory(this.categoryInput.value.trim());
                 this.categoryInput.value = '';
             }
         });
     }
 
     addCategory(category) {
-        if (!category.trim() || this.categories.has(category)) return;
+        if (this.categories.has(category)) return;
         
         this.categories.add(category);
         
-        const chip = document.createElement('md-chip');
-        chip.label = category;
-        chip.addEventListener('click', () => {
+        const chip = document.createElement('div');
+        chip.className = 'chip';
+        chip.innerHTML = `
+            ${category}
+            <span class="material-icons" style="font-size: 18px;">close</span>
+        `;
+        
+        chip.querySelector('.material-icons').addEventListener('click', () => {
             this.categories.delete(category);
             chip.remove();
         });
@@ -42,25 +48,37 @@ class WooScraperUI {
         this.categoryChips.appendChild(chip);
     }
 
+    updateProgressBar(percent) {
+        this.progressBar.style.width = `${percent}%`;
+    }
+
     async startScraping() {
+        if (this.categories.size === 0) {
+            this.setStatus('Please add at least one category first');
+            return;
+        }
+
         this.setStatus('Scraping in progress...', true);
+        this.updateProgressBar(0);
         
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             
-            const response = await chrome.tabs.sendMessage(tab.id, {
+            chrome.tabs.sendMessage(tab.id, {
                 action: 'startScraping',
                 categories: Array.from(this.categories)
+            }, response => {
+                if (response && response.success) {
+                    this.updateProductList(response.products);
+                    this.setStatus('Scraping completed!');
+                    this.updateProgressBar(100);
+                } else {
+                    throw new Error(response?.error || 'Failed to start scraping');
+                }
             });
-            
-            if (response.success) {
-                this.updateProductList(response.products);
-                this.setStatus('Scraping completed!', false);
-            } else {
-                throw new Error(response.error);
-            }
         } catch (error) {
-            this.setStatus(`Error: ${error.message}`, false);
+            this.setStatus(`Error: ${error.message}`);
+            this.updateProgressBar(0);
         }
     }
 
@@ -69,19 +87,28 @@ class WooScraperUI {
         this.products = new Map(products);
         
         products.forEach(([id, product]) => {
-            const item = document.createElement('md-list-item');
-            item.headline = product.name;
-            item.supportingText = `Price: ${product.price}`;
-            
-            const chip = document.createElement('md-chip');
-            chip.label = product.category;
-            item.appendChild(chip);
+            const item = document.createElement('div');
+            item.className = 'product-item';
+            item.innerHTML = `
+                <div>
+                    <div style="font-weight: 500;">${product.name}</div>
+                    <div style="color: var(--text-secondary); font-size: 14px;">
+                        Price: ${product.price}
+                    </div>
+                </div>
+                <div class="chip">${product.category}</div>
+            `;
             
             this.productList.appendChild(item);
         });
     }
 
     async exportData() {
+        if (this.products.size === 0) {
+            this.setStatus('No products to export');
+            return;
+        }
+
         const data = {
             categories: Array.from(this.categories),
             products: Array.from(this.products.values())
@@ -90,18 +117,25 @@ class WooScraperUI {
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         
-        await chrome.downloads.download({
-            url: url,
-            filename: 'woo-products.json',
-            saveAs: true
-        });
-        
-        URL.revokeObjectURL(url);
+        try {
+            await chrome.downloads.download({
+                url: url,
+                filename: 'woo-products.json',
+                saveAs: true
+            });
+            this.setStatus('Data exported successfully!');
+        } catch (error) {
+            this.setStatus('Failed to export data');
+        } finally {
+            URL.revokeObjectURL(url);
+        }
     }
 
-    setStatus(message, loading = false) {
+    setStatus(message, isLoading = false) {
         this.statusText.textContent = message;
-        this.progressBar.closed = !loading;
+        if (!isLoading) {
+            this.updateProgressBar(0);
+        }
     }
 }
 

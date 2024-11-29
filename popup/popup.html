@@ -6,55 +6,53 @@
     <title>WooCommerce Scraper</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/@material/web@1.0.0/dist/all.min.css" rel="stylesheet">
     <link href="popup.css" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
-            <md-top-app-bar>
-                <div slot="title">WooCommerce Scraper</div>
-                <md-icon-button slot="navigationIcon">
-                    <md-icon>menu</md-icon>
-                </md-icon-button>
-                <md-icon-button slot="actionItems">
-                    <md-icon>settings</md-icon>
-                </md-icon-button>
-            </md-top-app-bar>
+            <div class="header-content">
+                <h1>WooCommerce Scraper</h1>
+                <button class="icon-button" id="settingsButton">
+                    <span class="material-icons">settings</span>
+                </button>
+            </div>
         </header>
 
         <main>
             <div class="controls">
-                <md-filled-button id="startScraping">
+                <button class="primary-button" id="startScraping">
+                    <span class="material-icons">play_arrow</span>
                     Start Scraping
-                    <md-icon slot="icon">play_arrow</md-icon>
-                </md-filled-button>
+                </button>
 
-                <md-outlined-button id="exportData">
+                <button class="secondary-button" id="exportData">
+                    <span class="material-icons">download</span>
                     Export Data
-                    <md-icon slot="icon">download</md-icon>
-                </md-outlined-button>
+                </button>
             </div>
 
             <div class="categories">
-                <md-filled-text-field label="Add Category" id="categoryInput">
-                    <md-icon slot="leading-icon">label</md-icon>
-                </md-filled-text-field>
+                <div class="input-field">
+                    <input type="text" id="categoryInput" placeholder="Add Category">
+                    <span class="material-icons">label</span>
+                </div>
                 <div id="categoryChips" class="chip-set"></div>
             </div>
 
             <div class="products">
                 <h2>Selected Products</h2>
-                <md-list id="productList"></md-list>
+                <div id="productList" class="product-list"></div>
             </div>
 
             <div class="status">
-                <md-linear-progress id="progressBar"></md-linear-progress>
+                <div id="progressBar" class="progress-bar">
+                    <div class="progress-bar-fill"></div>
+                </div>
                 <p id="statusText">Ready to scrape</p>
             </div>
         </main>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/@material/web@1.0.0/dist/all.min.js"></script>
     <script src="popup.js"></script>
 </body>
 </html>
