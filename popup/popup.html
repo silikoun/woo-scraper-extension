@@ -22,66 +22,101 @@
         </header>
 
         <main>
-            <div class="tabs">
-                <button class="tab-btn active" data-tab="collections">
-                    <span class="material-icons">category</span>
-                    Collections
-                </button>
-                <button class="tab-btn" data-tab="products">
-                    <span class="material-icons">inventory_2</span>
-                    Products
-                </button>
-            </div>
-
-            <div class="tab-content">
-                <!-- Collections Tab -->
-                <div id="collections-panel" class="tab-panel active">
-                    <div class="search-container">
-                        <div class="input-field">
-                            <span class="material-icons">search</span>
-                            <input type="text" id="collectionSearch" placeholder="Search collections...">
-                        </div>
+            <div class="content">
+                <div class="control-panel">
+                    <div class="scrape-controls">
+                        <select id="scrapeType" class="scrape-select">
+                            <option value="products">Products</option>
+                            <option value="collections">Collections</option>
+                        </select>
+                        <button id="scrapeButton" class="action-button">
+                            <span class="button-text">Scrape</span>
+                            <span id="loadingSpinner" class="spinner">⟳</span>
+                        </button>
+                        <button id="clearButton" class="action-button secondary">
+                            <span class="button-text">Clear</span>
+                        </button>
                     </div>
-                    <div class="collections-list" id="collectionsList"></div>
-                </div>
-
-                <!-- Products Tab -->
-                <div id="products-panel" class="tab-panel">
-                    <div class="search-container">
-                        <div class="input-field">
-                            <span class="material-icons">search</span>
-                            <input type="text" id="productSearch" placeholder="Search products...">
-                        </div>
+                    <div class="selected-count">
+                        Selected: <span id="selectedCount">0</span>
                     </div>
-                    <div class="products-list" id="productsList"></div>
                 </div>
-            </div>
 
-            <div class="selected-items">
-                <div class="status-header">
-                    <h2>Selected Items</h2>
-                    <span id="selectedCount">0 items</span>
-                </div>
-                <div id="selectedItemsList" class="selected-items-list"></div>
-            </div>
+                <div class="content-container">
+                    <div id="productsTab" class="tab-content active">
+                        <div class="products-list" id="productsList"></div>
+                    </div>
 
-            <div class="controls">
-                <button class="primary-button" id="startScraping">
-                    <span class="material-icons">download</span>
-                    Start Scraping
-                </button>
-            </div>
+                    <div id="collectionsTab" class="tab-content">
+                        <div class="collections-list" id="collectionsList"></div>
+                    </div>
+                </div>
 
-            <div class="status">
-                <div class="status-header">
-                    <span class="status-title">Progress</span>
-                    <span id="progressText">0%</span>
+                <!-- Selected Items -->
+                <div class="selected-items">
+                    <div class="selected-header">
+                        <h3>Selected Items (<span id="selectedCount">0</span>)</h3>
+                        <button id="clearSelection" class="text-button">
+                            <span class="material-icons">clear_all</span>
+                            Clear
+                        </button>
+                    </div>
+                    <div id="selectedItemsList" class="selected-items-list"></div>
                 </div>
-                <div class="status-progress">
-                    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+
+                <!-- Export Options -->
+                <div class="export-section">
+                    <h3>Export Options</h3>
+                    <div class="export-options">
+                        <div class="checkbox-group">
+                            <label>
+                                <input type="checkbox" id="exportName" checked>
+                                Name
+                            </label>
+                            <label>
+                                <input type="checkbox" id="exportPrice" checked>
+                                Price
+                            </label>
+                            <label>
+                                <input type="checkbox" id="exportDescription" checked>
+                                Description
+                            </label>
+                            <label>
+                                <input type="checkbox" id="exportSKU" checked>
+                                SKU
+                            </label>
+                            <label>
+                                <input type="checkbox" id="exportStock" checked>
+                                Stock Status
+                            </label>
+                            <label>
+                                <input type="checkbox" id="exportImages" checked>
+                                Images
+                            </label>
+                        </div>
+                        <button id="exportSelected" class="primary-button" disabled>
+                            <span class="material-icons">file_download</span>
+                            Export Selected
+                        </button>
+                    </div>
                 </div>
-                <div class="status-details" id="statusText">
-                    Ready to start scraping...
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="primary-button" id="startScraping">
+                        <span class="material-icons">download</span>
+                        Start Scraping
+                    </button>
+                </div>
+
+                <!-- Status Section -->
+                <div class="status-section">
+                    <div class="status-details" id="statusDetails"></div>
+                </div>
+
+                <!-- Terminal Section -->
+                <div class="terminal">
+                    <div class="terminal-content" id="terminalContent"></div>
                 </div>
             </div>
         </main>

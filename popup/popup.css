@@ -1,3 +1,4 @@
+/* Root variables for consistent theming */
 :root {
     --primary-color: #6200ee;
     --primary-variant: #3700b3;
@@ -12,8 +13,13 @@
     --on-error: #ffffff;
     --elevation-1: 0 2px 1px -1px rgba(0,0,0,.2), 0 1px 1px 0 rgba(0,0,0,.14), 0 1px 3px 0 rgba(0,0,0,.12);
     --elevation-2: 0 3px 3px -2px rgba(0,0,0,.2), 0 3px 4px 0 rgba(0,0,0,.14), 0 1px 8px 0 rgba(0,0,0,.12);
+    --hover-color: #5600e3;
+    --border-color: #e0e0e0;
+    --text-color: #000000;
+    --error-color: #b00020;
 }
 
+/* Base styles */
 * {
     margin: 0;
     padding: 0;
@@ -28,12 +34,14 @@ body {
     color: var(--on-background);
 }
 
+/* Container styles */
 .container {
     display: flex;
     flex-direction: column;
     height: 100%;
 }
 
+/* Header styles */
 header {
     background-color: var(--primary-color);
     color: var(--on-primary);
@@ -60,6 +68,7 @@ h1 {
     font-weight: 500;
 }
 
+/* Main content styles */
 main {
     flex: 1;
     padding: 16px;
@@ -69,6 +78,7 @@ main {
     gap: 16px;
 }
 
+/* Tab styles */
 .tabs {
     display: flex;
     gap: 8px;
@@ -114,10 +124,12 @@ main {
     display: block;
 }
 
+/* Search container styles */
 .search-container {
     margin-bottom: 16px;
 }
 
+/* Input field styles */
 .input-field {
     position: relative;
     display: flex;
@@ -142,6 +154,7 @@ main {
     color: rgba(0, 0, 0, 0.54);
 }
 
+/* List styles */
 .collections-list, .products-list, .selected-items-list {
     display: flex;
     flex-direction: column;
@@ -182,6 +195,7 @@ main {
     object-fit: cover;
 }
 
+/* Select button styles */
 .select-button {
     background: transparent;
     border: none;
@@ -200,6 +214,7 @@ main {
     color: var(--error);
 }
 
+/* Selected items styles */
 .selected-items {
     background: var(--surface);
     border-radius: 4px;
@@ -219,6 +234,7 @@ main {
     gap: 8px;
 }
 
+/* Primary button styles */
 .primary-button {
     flex: 1;
     display: flex;
@@ -249,6 +265,7 @@ main {
     cursor: not-allowed;
 }
 
+/* Status styles */
 .status {
     background: var(--surface);
     border-radius: 4px;
@@ -256,26 +273,12 @@ main {
     box-shadow: var(--elevation-1);
 }
 
-.status-progress {
-    height: 4px;
-    background-color: #e0e0e0;
-    border-radius: 2px;
-    overflow: hidden;
-    margin: 8px 0;
-}
-
-.progress-bar {
-    height: 100%;
-    background-color: var(--primary-color);
-    width: 0;
-    transition: width 0.3s ease;
-}
-
 .status-details {
     font-size: 14px;
     color: rgba(0, 0, 0, 0.6);
 }
 
+/* Toast notification styles */
 .toast {
     position: fixed;
     bottom: 16px;
@@ -300,61 +303,227 @@ main {
     opacity: 1;
 }
 
+/* Terminal styles */
 .terminal {
     background-color: #1e1e1e;
     border-radius: 4px;
-    padding: 8px;
-    margin-top: 16px;
-    height: 200px;
+    margin: 16px 0;
+    padding: 12px;
+    height: 150px;
     overflow-y: auto;
 }
 
 .terminal-content {
     font-family: 'Consolas', monospace;
     font-size: 12px;
-    line-height: 1.4;
     color: #ffffff;
 }
 
 .terminal-line {
-    margin: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    line-height: 1.4;
+}
+
+.terminal-line.info {
+    color: #4fc3f7;
+}
+
+.terminal-line.success {
+    color: #81c784;
+}
+
+.terminal-line.error {
+    color: #e57373;
+}
+
+.terminal-line.warning {
+    color: #ffb74d;
+}
+
+.terminal-icon {
+    font-size: 16px;
+}
+
+/* Scrollbar Styles */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Action buttons */
+.action-button {
+    background-color: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.action-button:hover {
+    background-color: #1565c0;
+}
+
+.action-button:active {
+    transform: scale(0.98);
+}
+
+.action-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.action-button .material-icons {
+    font-size: 18px;
+}
+
+.text-button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: none;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.text-button:hover {
+    opacity: 1;
+}
+
+/* Selected items header */
+.selected-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* Export section */
+.export-section {
+    background: var(--surface);
+    border-radius: 4px;
+    padding: 16px;
+    margin-top: 16px;
+    box-shadow: var(--elevation-1);
+}
+
+.export-section h3 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.export-options {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.checkbox-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* Selected items list */
+.selected-items-list {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.selected-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px;
+    border-radius: 4px;
+    background-color: var(--secondary-color);
+    margin-bottom: 8px;
+}
+
+.selected-item:last-child {
+    margin-bottom: 0;
+}
+
+.selected-item-info {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.terminal-line.info {
-    color: #ffffff;
+.selected-item-type {
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 12px;
+    background-color: var(--primary-color);
+    color: white;
 }
 
-.terminal-line.success {
-    color: #4caf50;
+.selected-item-remove {
+    background: none;
+    border: none;
+    color: var(--error-color);
+    cursor: pointer;
+    padding: 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
 }
 
-.terminal-line.error {
-    color: #f44336;
+.selected-item-remove:hover {
+    opacity: 1;
 }
 
-.terminal-line.warning {
-    color: #ff9800;
-}
-
-.terminal-icon {
-    font-size: 16px;
-    width: 16px;
-    height: 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
+/* Loading indicator styles */
 .loading {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background-color: rgba(0, 0, 0, 0.7);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -380,22 +549,4 @@ main {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
-}
-
-/* Scrollbar Styles */
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(0, 0, 0, 0.3);
 }
