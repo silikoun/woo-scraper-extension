@@ -1,0 +1,28 @@
+.woo-scraper-selected {
+    outline: 2px solid #006A6A !important;
+    outline-offset: 2px;
+    position: relative;
+}
+
+.woo-scraper-selected::after {
+    content: '✓';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: #006A6A;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.woo-scraper-highlight {
+    outline: 2px dashed #006A6A !important;
+    outline-offset: 2px;
+    cursor: pointer;
+}
