@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WooCommerce Scraper</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@material/web@1.0.0/dist/all.min.css" rel="stylesheet">
+    <link href="popup.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <md-top-app-bar>
+                <div slot="title">WooCommerce Scraper</div>
+                <md-icon-button slot="navigationIcon">
+                    <md-icon>menu</md-icon>
+                </md-icon-button>
+                <md-icon-button slot="actionItems">
+                    <md-icon>settings</md-icon>
+                </md-icon-button>
+            </md-top-app-bar>
+        </header>
+
+        <main>
+            <div class="controls">
+                <md-filled-button id="startScraping">
+                    Start Scraping
+                    <md-icon slot="icon">play_arrow</md-icon>
+                </md-filled-button>
+
+                <md-outlined-button id="exportData">
+                    Export Data
+                    <md-icon slot="icon">download</md-icon>
+                </md-outlined-button>
+            </div>
+
+            <div class="categories">
+                <md-filled-text-field label="Add Category" id="categoryInput">
+                    <md-icon slot="leading-icon">label</md-icon>
+                </md-filled-text-field>
+                <div id="categoryChips" class="chip-set"></div>
+            </div>
+
+            <div class="products">
+                <h2>Selected Products</h2>
+                <md-list id="productList"></md-list>
+            </div>
+
+            <div class="status">
+                <md-linear-progress id="progressBar"></md-linear-progress>
+                <p id="statusText">Ready to scrape</p>
+            </div>
+        </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@material/web@1.0.0/dist/all.min.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>
