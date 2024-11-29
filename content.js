@@ -40,12 +40,13 @@ async function makeRequest(endpoint) {
 }
 
 // Function to scrape products
-async function scrapeProducts() {
+async function scrapeProducts(categories = []) {
     try {
         const baseUrl = window.location.origin;
         const products = [];
         let page = 1;
         let hasMore = true;
+        let progress = 0;
 
         while (hasMore) {
             const endpoint = `${baseUrl}/wp-json/wc/store/products?page=${page}&per_page=100`;
@@ -56,25 +57,43 @@ async function scrapeProducts() {
                 break;
             }
 
-            products.push(...data.map(product => ({
-                id: product.id,
-                name: product.name,
-                description: product.description?.replace(/<[^>]*>/g, '').trim() || '',
-                short_description: product.short_description?.replace(/<[^>]*>/g, '').trim() || '',
-                price: product.prices?.price || '',
-                regular_price: product.prices?.regular_price || '',
-                sale_price: product.prices?.sale_price || '',
-                on_sale: product.on_sale || false,
-                images: product.images?.map(img => img.src).join(', ') || '',
-                categories: product.categories?.map(cat => cat.name).join(', ') || '',
-                url: product.permalink || ''
-            })));
+            const processedProducts = data
+                .filter(product => {
+                    if (categories.length === 0) return true;
+                    return product.categories?.some(cat => 
+                        categories.includes(cat.name.toLowerCase())
+                    );
+                })
+                .map(product => ({
+                    id: product.id,
+                    name: product.name,
+                    description: product.description?.replace(/<[^>]*>/g, '').trim() || '',
+                    price: product.prices?.price_html || product.prices?.price || '',
+                    regular_price: product.prices?.regular_price || '',
+                    sale_price: product.prices?.sale_price || '',
+                    on_sale: product.on_sale || false,
+                    images: product.images?.map(img => img.src).join(', ') || '',
+                    categories: product.categories?.map(cat => cat.name).join(', ') || '',
+                    url: product.permalink || ''
+                }));
+
+            products.push(...processedProducts);
+            
+            // Calculate and send progress
+            progress = Math.min(100, Math.round((products.length / 387) * 100));
+            chrome.runtime.sendMessage({
+                action: 'updateProgress',
+                progress: progress
+            });
             
             if (data.length < 100) {
                 hasMore = false;
             } else {
                 page++;
             }
+
+            // Add a small delay to avoid overwhelming the server
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         return products;
@@ -127,28 +146,24 @@ async function scrapeCategories() {
 // Message listener for popup commands
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'startScraping') {
-        const { scrapeProducts: shouldScrapeProducts, scrapeCategories: shouldScrapeCategories } = request.config;
+        const categories = request.categories.map(cat => cat.toLowerCase());
         
-        Promise.all([
-            shouldScrapeProducts ? scrapeProducts() : Promise.resolve([]),
-            shouldScrapeCategories ? scrapeCategories() : Promise.resolve([])
-        ])
-        .then(([products, categories]) => {
-            chrome.runtime.sendMessage({
-                type: 'scrapingComplete',
-                success: true,
-                data: { products, categories }
+        scrapeProducts(categories)
+            .then(products => {
+                sendResponse({ 
+                    success: true, 
+                    products: Array.from(products.entries())
+                });
+            })
+            .catch(error => {
+                sendResponse({ 
+                    success: false, 
+                    error: error.message 
+                });
             });
-        })
-        .catch(error => {
-            chrome.runtime.sendMessage({
-                type: 'scrapingComplete',
-                success: false,
-                error: error.message
-            });
-        });
+            
+        return true; // Will respond asynchronously
     }
-    return true;
 });
 
 // Log when content script is loaded

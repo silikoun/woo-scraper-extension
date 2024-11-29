@@ -1,12 +1,13 @@
 {
   "name": "woo-scraper-extension",
   "version": "1.0.0",
-  "description": "WooCommerce Scraper Chrome Extension",
+  "description": "WooCommerce product scraper with Material Design",
+  "type": "module",
   "main": "test.js",
   "scripts": {
-    "test": "node test.js"
+    "test": "node test-scraper.js"
   },
   "dependencies": {
-    "axios": "^1.6.2"
+    "node-fetch": "^3.3.2"
   }
 }
