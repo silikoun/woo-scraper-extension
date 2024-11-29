@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WooCommerce Scraper</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>WooCommerce Scraper</h1>
+            <div class="header-actions">
+                <button class="btn">
+                    <i class="material-icons">settings</i>
+                    Settings
+                </button>
+                <button class="btn btn-primary">
+                    <i class="material-icons">refresh</i>
+                    Refresh Data
+                </button>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="search-bar">
+                <i class="material-icons">search</i>
+                <input type="text" id="search-input" placeholder="Search collections or products...">
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="collections">
+                    <i class="material-icons">folder</i>
+                    Collections
+                </button>
+                <button class="tab-btn" data-tab="products">
+                    <i class="material-icons">shopping_bag</i>
+                    Products
+                </button>
+            </div>
+
+            <div id="collections-panel" class="tab-panel active">
+                <div class="collections-grid">
+                    <!-- Collections will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <div id="products-panel" class="tab-panel">
+                <div class="products-grid">
+                    <!-- Products will be dynamically inserted here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loader"></div>
+        <p>Loading...</p>
+    </div>
+
+    <div id="toast" class="toast hidden">
+        <!-- Toast messages will be dynamically inserted here -->
+    </div>
+
+    <template id="collectionTemplate">
+        <div class="collection-card">
+            <div class="collection-header">
+                <h3 class="collection-name"></h3>
+                <span class="collection-count"></span>
+            </div>
+            <div class="collection-actions">
+                <button class="btn btn-text view-products">
+                    <i class="material-icons">visibility</i>
+                    View Products
+                </button>
+                <button class="btn btn-text export-collection">
+                    <i class="material-icons">download</i>
+                    Export
+                </button>
+            </div>
+            <div class="collection-info">
+                <p class="collection-id"></p>
+                <p class="collection-slug"></p>
+            </div>
+        </div>
+    </template>
+
+    <template id="productTemplate">
+        <div class="product-card">
+            <div class="product-image">
+                <img src="" alt="Product Image">
+            </div>
+            <div class="product-info">
+                <h3 class="product-name"></h3>
+                <p class="product-price"></p>
+                <p class="product-id"></p>
+                <p class="product-category"></p>
+                <div class="product-description"></div>
+            </div>
+            <div class="product-actions">
+                <button class="btn btn-text view-details">
+                    <i class="material-icons">info</i>
+                    Details
+                </button>
+                <a class="btn btn-text view-on-site" target="_blank">
+                    <i class="material-icons">open_in_new</i>
+                    View on Site
+                </a>
+            </div>
+        </div>
+    </template>
+
+    <script src="app.js" type="module"></script>
+</body>
+</html>

@@ -16,12 +16,7 @@ function extractProductData(product) {
         categories: Array.isArray(product.categories) ? product.categories.map(cat => cat.name || '').join(', ') : '',
         tags: Array.isArray(product.tags) ? product.tags.map(tag => tag.name || '').join(', ') : '',
         images: Array.isArray(product.images) ? product.images.map(img => img.src || '').join(', ') : '',
-        attributes: Array.isArray(product.attributes) ? product.attributes.map(attr => 
-            `${attr.name || ''}: ${Array.isArray(attr.options) ? attr.options.join(', ') : ''}`
-        ).join('; ') : '',
-        variations: Array.isArray(product.variations) ? product.variations.length : 0,
-        date_created: product.date_created || '',
-        date_modified: product.date_modified || ''
+        url: product.permalink || ''
     };
 }
 
@@ -32,9 +27,51 @@ async function makeRequest(endpoint) {
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        return await response.json();
+        const data = await response.json();
+        return data;
     } catch (error) {
         console.error('API request failed:', error);
+        throw error;
+    }
+}
+
+// Function to fetch all available categories
+async function fetchCategories() {
+    try {
+        const baseUrl = window.location.origin;
+        const categories = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+            const endpoint = `${baseUrl}/wp-json/wc/v3/products/categories?page=${page}&per_page=100`;
+            const data = await makeRequest(endpoint);
+            
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                hasMore = false;
+                break;
+            }
+
+            categories.push(...data.map(category => ({
+                id: category.id,
+                name: category.name,
+                slug: category.slug,
+                count: category.count
+            })));
+            
+            if (data.length < 100) {
+                hasMore = false;
+            } else {
+                page++;
+            }
+
+            // Add a small delay to avoid overwhelming the server
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        return categories;
+    } catch (error) {
+        console.error('Error fetching categories:', error);
         throw error;
     }
 }
@@ -43,13 +80,18 @@ async function makeRequest(endpoint) {
 async function scrapeProducts(categories = []) {
     try {
         const baseUrl = window.location.origin;
-        const products = [];
+        const products = new Set();
         let page = 1;
         let hasMore = true;
-        let progress = 0;
+        let totalProducts = 0;
+
+        // First request to get total number of products
+        const firstEndpoint = `${baseUrl}/wp-json/wc/v3/products?page=1&per_page=100`;
+        const firstResponse = await fetch(firstEndpoint);
+        totalProducts = parseInt(firstResponse.headers.get('X-WP-Total') || '0');
 
         while (hasMore) {
-            const endpoint = `${baseUrl}/wp-json/wc/store/products?page=${page}&per_page=100`;
+            const endpoint = `${baseUrl}/wp-json/wc/v3/products?page=${page}&per_page=100`;
             const data = await makeRequest(endpoint);
             
             if (!data || !Array.isArray(data) || data.length === 0) {
@@ -64,26 +106,16 @@ async function scrapeProducts(categories = []) {
                         categories.includes(cat.name.toLowerCase())
                     );
                 })
-                .map(product => ({
-                    id: product.id,
-                    name: product.name,
-                    description: product.description?.replace(/<[^>]*>/g, '').trim() || '',
-                    price: product.prices?.price_html || product.prices?.price || '',
-                    regular_price: product.prices?.regular_price || '',
-                    sale_price: product.prices?.sale_price || '',
-                    on_sale: product.on_sale || false,
-                    images: product.images?.map(img => img.src).join(', ') || '',
-                    categories: product.categories?.map(cat => cat.name).join(', ') || '',
-                    url: product.permalink || ''
-                }));
+                .map(extractProductData);
 
-            products.push(...processedProducts);
+            processedProducts.forEach(product => products.add(product));
             
-            // Calculate and send progress
-            progress = Math.min(100, Math.round((products.length / 387) * 100));
+            const progress = Math.min(100, Math.round((products.size / totalProducts) * 100));
             chrome.runtime.sendMessage({
                 action: 'updateProgress',
-                progress: progress
+                progress: progress,
+                currentCount: products.size,
+                totalCount: totalProducts
             });
             
             if (data.length < 100) {
@@ -96,63 +128,21 @@ async function scrapeProducts(categories = []) {
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
-        return products;
+        return Array.from(products);
     } catch (error) {
         console.error('Error scraping products:', error);
         throw error;
     }
 }
 
-// Function to scrape categories
-async function scrapeCategories() {
-    try {
-        const baseUrl = window.location.origin;
-        const categories = [];
-        let page = 1;
-        let hasMore = true;
-
-        while (hasMore) {
-            const endpoint = `${baseUrl}/wp-json/wc/store/products/categories?page=${page}&per_page=100`;
-            const data = await makeRequest(endpoint);
-            
-            if (!data || !Array.isArray(data) || data.length === 0) {
-                hasMore = false;
-                break;
-            }
-
-            categories.push(...data.map(category => ({
-                id: category.id,
-                name: category.name,
-                slug: category.slug,
-                description: category.description?.replace(/<[^>]*>/g, '').trim() || '',
-                count: category.count || 0,
-                image: category.image?.src || null
-            })));
-            
-            if (data.length < 100) {
-                hasMore = false;
-            } else {
-                page++;
-            }
-        }
-
-        return categories;
-    } catch (error) {
-        console.error('Error scraping categories:', error);
-        throw error;
-    }
-}
-
 // Message listener for popup commands
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'startScraping') {
-        const categories = request.categories.map(cat => cat.toLowerCase());
-        
-        scrapeProducts(categories)
-            .then(products => {
+    if (request.action === 'getCategories') {
+        fetchCategories()
+            .then(categories => {
                 sendResponse({ 
                     success: true, 
-                    products: Array.from(products.entries())
+                    categories: categories 
                 });
             })
             .catch(error => {
@@ -161,8 +151,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     error: error.message 
                 });
             });
-            
-        return true; // Will respond asynchronously
+        return true;
+    }
+    
+    if (request.action === 'startScraping') {
+        const categories = request.categories.map(cat => cat.toLowerCase());
+        
+        scrapeProducts(categories)
+            .then(products => {
+                sendResponse({ 
+                    success: true, 
+                    products: products
+                });
+            })
+            .catch(error => {
+                sendResponse({ 
+                    success: false, 
+                    error: error.message 
+                });
+            });
+        return true;
     }
 });
 

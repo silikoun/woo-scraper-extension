@@ -13,46 +13,111 @@
         <header>
             <div class="header-content">
                 <h1>WooCommerce Scraper</h1>
-                <button class="icon-button" id="settingsButton">
-                    <span class="material-icons">settings</span>
-                </button>
+                <div class="header-actions">
+                    <button class="icon-button" id="settingsButton" title="Settings">
+                        <span class="material-icons">settings</span>
+                    </button>
+                </div>
             </div>
         </header>
 
         <main>
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="collections">
+                    <span class="material-icons">category</span>
+                    Collections
+                </button>
+                <button class="tab-btn" data-tab="products">
+                    <span class="material-icons">inventory_2</span>
+                    Products
+                </button>
+            </div>
+
+            <div class="tab-content">
+                <!-- Collections Tab -->
+                <div id="collections-panel" class="tab-panel active">
+                    <div class="search-container">
+                        <div class="input-field">
+                            <span class="material-icons">search</span>
+                            <input type="text" id="collectionSearch" placeholder="Search collections...">
+                        </div>
+                    </div>
+                    <div class="collections-list" id="collectionsList"></div>
+                </div>
+
+                <!-- Products Tab -->
+                <div id="products-panel" class="tab-panel">
+                    <div class="search-container">
+                        <div class="input-field">
+                            <span class="material-icons">search</span>
+                            <input type="text" id="productSearch" placeholder="Search products...">
+                        </div>
+                    </div>
+                    <div class="products-list" id="productsList"></div>
+                </div>
+            </div>
+
+            <div class="selected-items">
+                <div class="status-header">
+                    <h2>Selected Items</h2>
+                    <span id="selectedCount">0 items</span>
+                </div>
+                <div id="selectedItemsList" class="selected-items-list"></div>
+            </div>
+
             <div class="controls">
                 <button class="primary-button" id="startScraping">
-                    <span class="material-icons">play_arrow</span>
+                    <span class="material-icons">download</span>
                     Start Scraping
                 </button>
-
-                <button class="secondary-button" id="exportData">
-                    <span class="material-icons">download</span>
-                    Export Data
-                </button>
-            </div>
-
-            <div class="categories">
-                <div class="input-field">
-                    <input type="text" id="categoryInput" placeholder="Add Category">
-                    <span class="material-icons">label</span>
-                </div>
-                <div id="categoryChips" class="chip-set"></div>
-            </div>
-
-            <div class="products">
-                <h2>Selected Products</h2>
-                <div id="productList" class="product-list"></div>
             </div>
 
             <div class="status">
-                <div id="progressBar" class="progress-bar">
-                    <div class="progress-bar-fill"></div>
+                <div class="status-header">
+                    <span class="status-title">Progress</span>
+                    <span id="progressText">0%</span>
                 </div>
-                <p id="statusText">Ready to scrape</p>
+                <div class="status-progress">
+                    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+                </div>
+                <div class="status-details" id="statusText">
+                    Ready to start scraping...
+                </div>
             </div>
         </main>
     </div>
+
+    <div class="toast" id="toast">
+        <span class="material-icons" id="toastIcon">info</span>
+        <span id="toastMessage"></span>
+    </div>
+
+    <!-- Templates -->
+    <template id="collectionTemplate">
+        <div class="collection-item">
+            <div class="item-info">
+                <div class="item-name"></div>
+                <div class="item-count"></div>
+            </div>
+            <button class="select-button">
+                <span class="material-icons">add</span>
+            </button>
+        </div>
+    </template>
+
+    <template id="productTemplate">
+        <div class="product-item">
+            <img class="product-image">
+            <div class="item-info">
+                <div class="item-name"></div>
+                <div class="item-price"></div>
+            </div>
+            <button class="select-button">
+                <span class="material-icons">add</span>
+            </button>
+        </div>
+    </template>
+
     <script src="popup.js"></script>
 </body>
 </html>

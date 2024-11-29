@@ -13,13 +13,17 @@
         "https://vintagefootball.shop/*"
     ],
     "action": {
-        "default_popup": "popup/popup.html"
+        "default_popup": "popup/popup.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
     },
     "content_scripts": [
         {
             "matches": ["https://vintagefootball.shop/*"],
-            "js": ["content.js"],
-            "css": ["content.css"]
+            "js": ["content.js"]
         }
     ],
     "background": {
@@ -28,6 +32,11 @@
     },
     "content_security_policy": {
         "extension_pages": "script-src 'self'; object-src 'self'"
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
     },
     "theme_color": "#6200EA"
 }
