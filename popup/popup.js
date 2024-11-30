@@ -184,83 +184,92 @@ async function scrapeProducts() {
  * @returns {array} The scraped WooCommerce products
  */
 async function scrapeWooCommerceProducts(baseUrl) {
-    try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.url) {
-            throw new Error('No active tab found');
-        }
+    const results = [];
+    let page = 1;
+    let hasMore = true;
+    const perPage = 100; // Maximum allowed by WooCommerce API
 
-        log(`Fetching products from ${baseUrl}`, 'info', 'link');
-
-        // Try WooCommerce REST API v3 first
+    while (hasMore) {
         try {
-            const v3Response = await fetch(`${baseUrl}/wp-json/wc/v3/products?per_page=100`, {
+            // Try WooCommerce Store API first (public, no auth needed)
+            const storeUrl = `${baseUrl}/wp-json/wc/store/v1/products?per_page=${perPage}&page=${page}`;
+            const response = await fetch(storeUrl, {
                 headers: {
                     'Accept': 'application/json'
                 }
             });
-            if (v3Response.ok) {
-                const data = await v3Response.json();
-                return data.map(product => ({
-                    id: product.id,
-                    name: product.name,
-                    price: product.price || product.regular_price || '0',
-                    description: product.description || '',
-                    sku: product.sku || '',
-                    inStock: product.in_stock,
-                    images: product.images?.map(img => img.src) || []
-                }));
-            }
-        } catch (error) {
-            log('WC REST API v3 not available, trying Store API...', 'info', 'sync');
-        }
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    // If Store API fails, try WordPress REST API
+                    const wpUrl = `${baseUrl}/wp-json/wp/v2/product?per_page=${perPage}&page=${page}&_embed`;
+                    const wpResponse = await fetch(wpUrl, {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
 
-        // Try WooCommerce Store API
-        try {
-            const storeResponse = await fetch(`${baseUrl}/wp-json/wc/store/v1/products?per_page=100`, {
-                headers: {
-                    'Accept': 'application/json'
+                    if (!wpResponse.ok) {
+                        throw new Error(`Failed to fetch products. Status: ${wpResponse.status}`);
+                    }
+
+                    const wpProducts = await wpResponse.json();
+                    const processedProducts = wpProducts.map(product => ({
+                        id: product.id,
+                        name: product.title?.rendered || '',
+                        price: product.meta?.price || '',
+                        price_html: product.meta?.price_html || '',
+                        description: product.content?.rendered || '',
+                        short_description: product.excerpt?.rendered || '',
+                        sku: product.meta?.sku || '',
+                        stock_status: product.meta?.stock_status || '',
+                        images: product._embedded?.['wp:featuredmedia']?.map(media => media.source_url) || [],
+                        categories: product._embedded?.['wp:term']?.[0]?.map(term => term.name) || []
+                    }));
+                    results.push(...processedProducts);
+                } else {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-            });
-            if (storeResponse.ok) {
-                const data = await storeResponse.json();
-                return data.map(product => ({
+            } else {
+                const products = await response.json();
+                if (products.length === 0) {
+                    hasMore = false;
+                    break;
+                }
+
+                const processedProducts = products.map(product => ({
                     id: product.id,
                     name: product.name,
-                    price: product.prices?.price || product.prices?.regular_price || '0',
+                    price: product.prices?.price || '',
+                    price_html: product.prices?.price_html || '',
                     description: product.description || '',
+                    short_description: product.short_description || '',
                     sku: product.sku || '',
-                    inStock: product.is_in_stock,
-                    images: product.images?.map(img => img.src) || []
+                    stock_status: product.stock_status || '',
+                    images: product.images?.map(img => img.src) || [],
+                    categories: product.categories?.map(cat => cat.name) || []
                 }));
+                
+                results.push(...processedProducts);
             }
+            
+            log(`Fetched ${results.length} products...`, 'info', 'download');
+            
+            // Check if we have more pages from headers
+            const totalPages = parseInt(response.headers.get('X-WP-TotalPages')) || 1;
+            hasMore = page < totalPages;
+            page++;
+            
+            // Add a small delay to avoid overwhelming the server
+            await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-            log('WC Store API not available, trying WordPress API...', 'info', 'sync');
+            console.error('Error fetching products:', error);
+            log(`Error fetching products: ${error.message}`, 'error', 'error');
+            break;
         }
-
-        // Try WordPress REST API as last resort
-        const wpResponse = await fetch(`${baseUrl}/wp-json/wp/v2/product?per_page=100&_embed`, {
-            headers: {
-                'Accept': 'application/json'
-            }
-        });
-        if (wpResponse.ok) {
-            const data = await wpResponse.json();
-            return data.map(product => ({
-                id: product.id,
-                name: product.title?.rendered || 'Untitled Product',
-                price: '0',
-                description: product.content?.rendered || '',
-                sku: '',
-                inStock: true,
-                images: [product._embedded?.['wp:featuredmedia']?.[0]?.source_url].filter(Boolean)
-            }));
-        }
-
-        throw new Error('No compatible API endpoints found');
-    } catch (error) {
-        throw new Error(`WooCommerce scraping failed: ${error.message}`);
     }
+
+    return results;
 }
 
 /**
@@ -332,80 +341,74 @@ async function scrapeCollections() {
  * @returns {array} The scraped WooCommerce collections
  */
 async function scrapeWooCommerceCollections(baseUrl) {
-    try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.url) {
-            throw new Error('No active tab found');
-        }
+    const results = [];
+    let page = 1;
+    let hasMore = true;
+    const perPage = 100; // Maximum allowed by WooCommerce API
 
-        log(`Fetching collections from ${baseUrl}`, 'info', 'link');
-
-        // Try WooCommerce REST API v3 first
+    while (hasMore) {
         try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products/categories?per_page=100`, {
+            // Try WooCommerce Store API first (public, no auth needed)
+            const storeUrl = `${baseUrl}/wp-json/wc/store/v1/products/categories?per_page=${perPage}&page=${page}`;
+            const response = await fetch(storeUrl, {
                 headers: {
                     'Accept': 'application/json'
                 }
             });
-            if (response.ok) {
-                const data = await response.json();
-                return data.map(category => ({
-                    id: category.id,
-                    name: category.name,
-                    count: category.count || 0,
-                    description: category.description || '',
-                    slug: category.slug || '',
-                    parent: category.parent || 0
-                }));
-            }
-        } catch (error) {
-            log('WC REST API v3 not available, trying Store API...', 'info', 'sync');
-        }
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    // If Store API fails, try WordPress REST API
+                    const wpUrl = `${baseUrl}/wp-json/wp/v2/product_cat?per_page=${perPage}&page=${page}&_embed`;
+                    const wpResponse = await fetch(wpUrl, {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
 
-        // Try WooCommerce Store API
-        try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/store/v1/products/categories?per_page=100`, {
-                headers: {
-                    'Accept': 'application/json'
+                    if (!wpResponse.ok) {
+                        throw new Error(`Failed to fetch collections. Status: ${wpResponse.status}`);
+                    }
+
+                    const wpCategories = await wpResponse.json();
+                    const processedCategories = wpCategories.map(category => ({
+                        id: category.id,
+                        name: category.name || '',
+                        description: category.description || '',
+                        count: category.count || 0,
+                        image: category._embedded?.['wp:featuredmedia']?.[0]?.source_url || null
+                    }));
+                    results.push(...processedCategories);
+                } else {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                return data.map(category => ({
-                    id: category.id,
-                    name: category.name,
-                    count: category.count || 0,
-                    description: category.description || '',
-                    slug: category.slug || '',
-                    parent: category.parent || 0
-                }));
+            } else {
+                const categories = await response.json();
+                if (categories.length === 0) {
+                    hasMore = false;
+                    break;
+                }
+                
+                results.push(...categories);
             }
+            
+            log(`Fetched ${results.length} collections...`, 'info', 'download');
+            
+            // Check if we have more pages from headers
+            const totalPages = parseInt(response.headers.get('X-WP-TotalPages')) || 1;
+            hasMore = page < totalPages;
+            page++;
+            
+            // Add a small delay to avoid overwhelming the server
+            await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-            log('WC Store API not available, trying WordPress API...', 'info', 'sync');
+            console.error('Error fetching collections:', error);
+            log(`Error fetching collections: ${error.message}`, 'error', 'error');
+            break;
         }
-
-        // Try WordPress REST API as last resort
-        const response = await fetch(`${baseUrl}/wp-json/wp/v2/product_cat?per_page=100`, {
-            headers: {
-                'Accept': 'application/json'
-            }
-        });
-        if (response.ok) {
-            const data = await response.json();
-            return data.map(category => ({
-                id: category.id,
-                name: category.name || '',
-                count: category.count || 0,
-                description: category.description || '',
-                slug: category.slug || '',
-                parent: category.parent || 0
-            }));
-        }
-
-        throw new Error('No compatible API endpoints found');
-    } catch (error) {
-        throw new Error(`Failed to fetch collections: ${error.message}`);
     }
+
+    return results;
 }
 
 /**
@@ -1210,12 +1213,18 @@ function exportSelectedItems() {
                 if (options.price) {
                     // Extract numeric price and format it properly
                     const priceText = product.price_html || product.price || '';
-                    const priceMatch = priceText.match(/[\d,.]+/);
-                    if (priceMatch) {
-                        const price = priceMatch[0].replace(/[^\d.]/g, '');
-                        item.price = parseFloat(price).toFixed(2);
+                    // Remove currency symbols and any other non-numeric characters except dots
+                    const numericPrice = priceText.replace(/[^0-9.]/g, '');
+                    // Handle cases where there might be multiple dots
+                    const parts = numericPrice.split('.');
+                    if (parts.length > 1) {
+                        // Keep the first part and the first two digits of decimal part
+                        const wholePart = parts[0];
+                        const decimalPart = parts[1].substring(0, 2);
+                        item.price = `${wholePart}.${decimalPart}`;
                     } else {
-                        item.price = '';
+                        // If no decimal point, assume it's a whole number
+                        item.price = `${numericPrice}.00`;
                     }
                 }
                 if (options.description) item.description = product.description || '';
