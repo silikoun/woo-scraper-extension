@@ -823,28 +823,33 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateButtonStates() {
         const scrapeButton = document.getElementById('scrapeButton');
         const clearButton = document.getElementById('clearButton');
-        const hasSelection = selectedProducts.size > 0 || selectedCollections.size > 0;
+        const exportButton = document.getElementById('exportSelected');
+        const hasSelectedItems = selectedProducts.size > 0 || selectedCollections.size > 0;
         
         if (scrapeButton) {
-            scrapeButton.disabled = !hasSelection;
-            scrapeButton.style.cursor = hasSelection ? 'pointer' : 'not-allowed';
+            scrapeButton.disabled = !hasSelectedItems;
+            scrapeButton.style.cursor = hasSelectedItems ? 'pointer' : 'not-allowed';
         }
         
         if (clearButton) {
-            clearButton.disabled = !hasSelection;
-            clearButton.style.cursor = hasSelection ? 'pointer' : 'not-allowed';
+            clearButton.disabled = !hasSelectedItems;
+            clearButton.style.cursor = hasSelectedItems ? 'pointer' : 'not-allowed';
+        }
+        
+        if (exportButton) {
+            exportButton.disabled = !hasSelectedItems;
         }
     }
 
     // Loading state management
     function setLoading(loading) {
+        isLoading = loading;
         const scrapeButton = document.getElementById('scrapeButton');
         const loadingSpinner = document.getElementById('loadingSpinner');
         
         if (scrapeButton) {
             scrapeButton.disabled = loading;
-            scrapeButton.classList.toggle('loading', loading);
-            scrapeButton.style.cursor = loading ? 'wait' : 'pointer';
+            scrapeButton.style.cursor = loading ? 'not-allowed' : 'pointer';
         }
         
         if (loadingSpinner) {
@@ -869,7 +874,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error('Error scraping:', error);
-            showToast('Error: ' + error.message, 'error');
+            log(`Error: ${error.message}`, 'error', 'error');
         } finally {
             setLoading(false);
         }
@@ -890,6 +895,25 @@ document.addEventListener('DOMContentLoaded', () => {
             updateButtonStates();
         }
     });
+
+    // Initialize export button
+    const exportButton = document.getElementById('exportSelected');
+    if (exportButton) {
+        exportButton.addEventListener('click', () => {
+            const options = {
+                includeImages: true,
+                includeDescription: true,
+                includePrice: true,
+                includeStock: true,
+                includeCategories: true
+            };
+            exportSelectedItems(options);
+        });
+
+        // Set initial state
+        const hasSelectedItems = selectedProducts.size > 0 || selectedCollections.size > 0;
+        exportButton.disabled = !hasSelectedItems;
+    }
 
     // Select All button functionality
     const selectAllButton = document.getElementById('selectAllButton');
@@ -964,6 +988,7 @@ function initializeButtons() {
     const scrapeButton = document.getElementById('scrapeButton');
     const clearButton = document.getElementById('clearButton');
     const scrapeType = document.getElementById('scrapeType');
+    const exportButton = document.getElementById('exportSelected');
     
     if (scrapeButton && scrapeType) {
         scrapeButton.addEventListener('click', async () => {
@@ -987,42 +1012,45 @@ function initializeButtons() {
                 setLoading(false);
             }
         });
-        
-        // Set initial button state
-        scrapeButton.disabled = false;
-        scrapeButton.style.cursor = 'pointer';
     }
-    
+
     if (clearButton) {
-        clearButton.addEventListener('click', () => {
-            clearSelection();
-        });
+        clearButton.addEventListener('click', clearSelection);
     }
+
+    // Initialize export button
+    if (exportButton) {
+        exportButton.addEventListener('click', () => {
+            const options = {
+                includeImages: true,
+                includeDescription: true,
+                includePrice: true,
+                includeStock: true,
+                includeCategories: true
+            };
+            exportSelectedItems(options);
+        });
+
+        // Set initial state
+        const hasSelectedItems = selectedProducts.size > 0 || selectedCollections.size > 0;
+        exportButton.disabled = !hasSelectedItems;
+    }
+
+    // Set initial button states
+    updateButtonStates();
 }
 
-/**
- * Updates the selected count display
- */
-function updateSelectedCount() {
-    const selectedCountElements = document.querySelectorAll('#selectedCount');
-    const activeTabId = document.querySelector('.tab-content.active').id;
-    const selectedSet = activeTabId === 'productsTab' ? selectedProducts : selectedCollections;
-    
-    selectedCountElements.forEach(element => {
-        element.textContent = selectedSet.size;
-    });
+function updateButtonStates() {
+    const exportButton = document.getElementById('exportSelected');
+    const clearButton = document.getElementById('clearButton');
+    const hasSelectedItems = selectedProducts.size > 0 || selectedCollections.size > 0;
 
-    // Update select all button state
-    const items = activeTabId === 'productsTab' ? products : collections;
-    const selectAllButton = document.getElementById('selectAllButton');
-    const icon = selectAllButton.querySelector('.material-icons');
-    
-    if (items.length > 0 && items.every(item => selectedSet.has(item.id))) {
-        icon.textContent = 'check';
-        selectAllButton.title = 'Deselect All';
-    } else {
-        icon.textContent = 'select_all';
-        selectAllButton.title = 'Select All';
+    if (exportButton) {
+        exportButton.disabled = !hasSelectedItems;
+    }
+
+    if (clearButton) {
+        clearButton.disabled = !hasSelectedItems;
     }
 }
 
@@ -1085,22 +1113,22 @@ function updateSelectedItemsList() {
     let count = 0;
 
     // Add selected collections
-    selectedCollections.forEach(id => {
+    for (const id of selectedCollections) {
         const collection = collections.find(c => c.id === id);
         if (collection) {
             count++;
             container.appendChild(createSelectedItemElement(collection, 'collection'));
         }
-    });
+    }
 
     // Add selected products
-    selectedProducts.forEach(id => {
+    for (const id of selectedProducts) {
         const product = products.find(p => p.id === id);
         if (product) {
             count++;
             container.appendChild(createSelectedItemElement(product, 'product'));
         }
-    });
+    }
 
     // Update count
     const countElement = document.getElementById('selectedCount');
@@ -1160,23 +1188,44 @@ function exportSelectedItems(options) {
         const results = [];
 
         // Process selected collections
-        selectedCollections.forEach(id => {
+        for (const id of selectedCollections) {
             const collection = collections.find(c => c.id === id);
             if (collection) {
-                results.push(formatItemForExport(collection, 'collection', options));
+                results.push({
+                    type: 'collection',
+                    id: collection.id,
+                    name: collection.name,
+                    count: collection.count || 0,
+                    description: collection.description || '',
+                    url: collection.url || ''
+                });
             }
-        });
+        }
 
         // Process selected products
-        selectedProducts.forEach(id => {
+        for (const id of selectedProducts) {
             const product = products.find(p => p.id === id);
             if (product) {
-                results.push(formatItemForExport(product, 'product', options));
+                results.push({
+                    type: 'product',
+                    id: product.id,
+                    name: product.name,
+                    price: product.price_html || product.price || '',
+                    description: product.description || '',
+                    images: product.images ? product.images.join(', ') : '',
+                    stock_status: product.stock_status || '',
+                    categories: product.categories ? product.categories.join(', ') : '',
+                    url: product.url || ''
+                });
             }
-        });
+        }
+
+        if (results.length === 0) {
+            throw new Error('No items selected for export');
+        }
 
         // Create CSV content
-        const csvContent = convertDataToCSV(results, options);
+        const csvContent = convertDataToCSV(results);
         
         // Create and download file
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1190,82 +1239,32 @@ function exportSelectedItems(options) {
         URL.revokeObjectURL(url);
 
         log(`Successfully exported ${results.length} items`, 'success', 'check_circle');
-        showToast(`Exported ${results.length} items`);
     } catch (error) {
+        console.error('Export error:', error);
         log(`Export failed: ${error.message}`, 'error', 'error');
-        showToast('Export failed', true);
     }
 }
 
-/**
- * Formats an item for export based on options
- * @param {Object} item - The item to format
- * @param {string} type - The type of item
- * @param {Object} options - Export options
- * @returns {Object} Formatted item
- */
-function formatItemForExport(item, type, options) {
-    const formatted = {
-        type: type,
-        id: item.id
-    };
+function convertDataToCSV(data) {
+    if (!data.length) return '';
 
-    if (options.name) formatted.name = item.name;
-    if (options.price && type === 'product') formatted.price = item.price;
-    if (options.description) formatted.description = item.description;
-    if (options.sku && type === 'product') formatted.sku = item.sku;
-    if (options.stock && type === 'product') formatted.stock = item.inStock ? 'In Stock' : 'Out of Stock';
-    if (options.images) formatted.images = item.images ? item.images.join(', ') : '';
+    // Get all possible headers from all items
+    const headers = Array.from(new Set(
+        data.reduce((acc, item) => [...acc, ...Object.keys(item)], [])
+    ));
 
-    return formatted;
-}
-
-/**
- * Converts an array of products into a CSV string
- * @param {array} products - The products to convert
- * @returns {string} The CSV string
- */
-function convertToCSV(products) {
-    const headers = ['ID', 'Name', 'Price', 'Description', 'Image URL'];
-    const rows = products.map(p => [
-        p.id,
-        `"${p.name.replace(/"/g, '""')}"`,
-        p.price,
-        `"${(p.description || '').replace(/"/g, '""').replace(/<[^>]+>/g, '')}"`,
-        p.image
-    ]);
-    
-    return [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-    ].join('\n');
-}
-
-/**
- * Converts data to CSV format
- * @param {Array} data - Array of objects to convert
- * @param {Object} options - Export options for fields to include
- * @returns {string} CSV string
- */
-function convertDataToCSV(data, options) {
-    if (!data || !data.length) return '';
-
-    // Get headers from the first item
-    const headers = Object.keys(data[0]);
-    const rows = [headers.join(',')];
-
-    // Add data rows
-    data.forEach(item => {
-        const values = headers.map(header => {
-            const value = item[header];
-            if (value === null || value === undefined) return '';
-            if (typeof value === 'string' && value.includes(',')) {
-                return `"${value}"`;
-            }
-            return value;
-        });
-        rows.push(values.join(','));
-    });
+    // Create CSV rows
+    const rows = [
+        headers.join(','), // Header row
+        ...data.map(item => 
+            headers.map(header => {
+                const value = item[header] || '';
+                // Escape quotes and wrap in quotes if contains comma or newline
+                const escaped = String(value).replace(/"/g, '""');
+                return /[,\n"]/.test(escaped) ? `"${escaped}"` : escaped;
+            }).join(',')
+        )
+    ];
 
     return rows.join('\n');
 }
@@ -1288,4 +1287,25 @@ function updateSelectedCount() {
     if (exportButton) {
         exportButton.disabled = totalSelected === 0;
     }
+}
+
+/**
+ * Shows a toast message to the user
+ * @param {string} message - The message to display
+ * @param {boolean} error - Whether the message is an error
+ */
+function showToast(message, error = false) {
+    const toast = document.getElementById('toast');
+    if (!toast) {
+        console.error('Toast element not found');
+        return;
+    }
+
+    toast.textContent = message;
+    toast.classList.toggle('error', error);
+    toast.classList.add('visible');
+
+    setTimeout(() => {
+        toast.classList.remove('visible');
+    }, 3000);
 }
