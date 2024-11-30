@@ -326,15 +326,6 @@ main {
     box-shadow: none;
 }
 
-.action-button.secondary {
-    background: #f5f5f5;
-    color: var(--text-color);
-}
-
-.action-button.secondary:hover::before {
-    background: linear-gradient(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0));
-}
-
 .action-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
@@ -713,4 +704,9 @@ main {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Hide start scraping button */
+#startScraping {
+    display: none;
 }
