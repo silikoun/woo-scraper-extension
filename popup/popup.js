@@ -1297,16 +1297,21 @@ document.addEventListener('DOMContentLoaded', () => {
  * Updates the count of selected items in the UI
  */
 function updateSelectedCount() {
-    const selectedCount = document.getElementById('selectedCount');
-    if (!selectedCount) {
-        console.warn('Selected count element not found');
-        return;
-    }
-    
     const totalSelected = selectedProducts.size + selectedCollections.size;
-    selectedCount.textContent = totalSelected.toString();
     
-    // Enable/disable export button based on selection
+    // Update all count displays
+    const countElements = [
+        document.getElementById('selectedCount'),
+        document.getElementById('headerSelectedCount')
+    ];
+
+    countElements.forEach(element => {
+        if (element) {
+            element.textContent = totalSelected;
+        }
+    });
+
+    // Update export button state
     const exportButton = document.getElementById('exportSelected');
     if (exportButton) {
         exportButton.disabled = totalSelected === 0;
