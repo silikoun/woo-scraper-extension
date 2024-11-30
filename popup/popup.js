@@ -819,90 +819,123 @@ document.addEventListener('DOMContentLoaded', () => {
     setupFilters();
     updateUI();
 
-    // Scrape Products button
-    let scrapeButton = document.getElementById('scrapeButton');
-    if (scrapeButton) {
-        scrapeButton.addEventListener('click', async () => {
-            if (isLoading) return;
-            
-            try {
-                setLoading(true);
-                const type = document.getElementById('scrapeType').value;
-                
-                if (type === 'products') {
-                    await scrapeProducts();
-                    displayProducts();
-                } else if (type === 'collections') {
-                    await scrapeCollections();
-                    displayCollections();
-                }
-            } catch (error) {
-                console.error('Error scraping:', error);
-                log(`Error: ${error.message}`, 'error', 'error');
-            } finally {
-                setLoading(false);
-            }
-        });
+    // Button state management
+    function updateButtonStates() {
+        const scrapeButton = document.getElementById('scrapeButton');
+        const clearButton = document.getElementById('clearButton');
+        const hasSelection = selectedProducts.size > 0 || selectedCollections.size > 0;
         
-        // Set initial button state
-        scrapeButton.disabled = false;
-        scrapeButton.style.cursor = 'pointer';
-    } else {
-        console.error('Scrape button not found');
+        if (scrapeButton) {
+            scrapeButton.disabled = !hasSelection;
+            scrapeButton.style.cursor = hasSelection ? 'pointer' : 'not-allowed';
+        }
+        
+        if (clearButton) {
+            clearButton.disabled = !hasSelection;
+            clearButton.style.cursor = hasSelection ? 'pointer' : 'not-allowed';
+        }
     }
 
-    // Export Selected button
-    let exportSelectedBtn = document.getElementById('exportSelected');
-    if (exportSelectedBtn) {
-        exportSelectedBtn.addEventListener('click', () => {
-            try {
-                const options = {
-                    name: document.getElementById('exportName')?.checked || false,
-                    price: document.getElementById('exportPrice')?.checked || false,
-                    description: document.getElementById('exportDescription')?.checked || false,
-                    sku: document.getElementById('exportSKU')?.checked || false,
-                    stock: document.getElementById('exportStock')?.checked || false,
-                    images: document.getElementById('exportImages')?.checked || false
-                };
+    // Loading state management
+    function setLoading(loading) {
+        const scrapeButton = document.getElementById('scrapeButton');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        
+        if (scrapeButton) {
+            scrapeButton.disabled = loading;
+            scrapeButton.classList.toggle('loading', loading);
+            scrapeButton.style.cursor = loading ? 'wait' : 'pointer';
+        }
+        
+        if (loadingSpinner) {
+            loadingSpinner.style.display = loading ? 'inline-block' : 'none';
+        }
+    }
 
-                if (!Object.values(options).some(Boolean)) {
-                    log('Please select at least one field to export', 'warning', 'warning');
-                    return;
-                }
+    // Event Listeners
+    document.getElementById('scrapeButton').addEventListener('click', async () => {
+        if (isLoading) return;
+        
+        try {
+            setLoading(true);
+            const type = document.getElementById('scrapeType').value;
+            
+            if (type === 'products') {
+                await scrapeProducts();
+                displayProducts();
+            } else if (type === 'collections') {
+                await scrapeCollections();
+                displayCollections();
+            }
+        } catch (error) {
+            console.error('Error scraping:', error);
+            showToast('Error: ' + error.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    });
 
-                if (selectedProducts.size === 0 && selectedCollections.size === 0) {
-                    log('Please select items to export', 'warning', 'warning');
-                    return;
-                }
+    document.getElementById('clearButton').addEventListener('click', () => {
+        const button = document.getElementById('clearButton');
+        button.disabled = true;
+        button.style.cursor = 'wait';
+        
+        try {
+            clearSelection();
+            updateSelectedItemsList();
+            showToast('Selection cleared', 'info');
+        } finally {
+            button.disabled = false;
+            button.style.cursor = 'pointer';
+            updateButtonStates();
+        }
+    });
 
-                exportSelectedItems(options);
-            } catch (error) {
-                console.error('Error exporting items:', error);
-                log(`Error: ${error.message}`, 'error', 'error');
+    // Select All button functionality
+    const selectAllButton = document.getElementById('selectAllButton');
+    const clearSelectionButton = document.getElementById('clearSelection');
+
+    function toggleAllItems(select) {
+        const activeTabId = document.querySelector('.tab-content.active').id;
+        const items = activeTabId === 'productsTab' ? products : collections;
+        const selectedSet = activeTabId === 'productsTab' ? selectedProducts : selectedCollections;
+        const itemType = activeTabId === 'productsTab' ? 'product' : 'collection';
+
+        // Clear or fill the selected set
+        selectedSet.clear();
+        if (select) {
+            items.forEach(item => selectedSet.add(item.id));
+        }
+
+        // Update all select buttons
+        const itemCards = document.querySelectorAll(`#${activeTabId} .item-row`);
+        itemCards.forEach(card => {
+            const selectButton = card.querySelector('.select-button');
+            const icon = selectButton?.querySelector('.material-icons');
+            if (icon) {
+                icon.textContent = select ? 'check' : 'add';
             }
         });
-    } else {
-        console.error('Export Selected button not found');
+
+        // Update UI
+        updateSelectedCount();
+        updateSelectedItemsList();
+        updateButtonStates();
     }
 
-    // Clear Selection button
-    let clearSelectionBtn = document.getElementById('clearSelection');
-    if (clearSelectionBtn) {
-        clearSelectionBtn.addEventListener('click', () => {
-            try {
-                selectedProducts.clear();
-                selectedCollections.clear();
-                updateSelectedItemsList();
-                updateSelectedCount();
-                log('Selection cleared', 'info', 'clear_all');
-            } catch (error) {
-                console.error('Error clearing selection:', error);
-                log(`Error: ${error.message}`, 'error', 'error');
-            }
-        });
-    } else {
-        console.error('Clear Selection button not found');
-    }
+    selectAllButton.addEventListener('click', () => {
+        const activeTabId = document.querySelector('.tab-content.active').id;
+        const selectedSet = activeTabId === 'productsTab' ? selectedProducts : selectedCollections;
+        const items = activeTabId === 'productsTab' ? products : collections;
+        
+        // Check if all items are currently selected
+        const allSelected = items.length > 0 && items.every(item => selectedSet.has(item.id));
+        toggleAllItems(!allSelected);
+    });
+
+    clearSelectionButton.addEventListener('click', () => {
+        toggleAllItems(false);
+    });
 });
 
 /**
@@ -954,6 +987,10 @@ function initializeButtons() {
                 setLoading(false);
             }
         });
+        
+        // Set initial button state
+        scrapeButton.disabled = false;
+        scrapeButton.style.cursor = 'pointer';
     }
     
     if (clearButton) {
@@ -967,10 +1004,25 @@ function initializeButtons() {
  * Updates the selected count display
  */
 function updateSelectedCount() {
-    const selectedCount = document.getElementById('selectedCount');
-    if (selectedCount) {
-        const total = selectedProducts.size + selectedCollections.size;
-        selectedCount.textContent = total.toString();
+    const selectedCountElements = document.querySelectorAll('#selectedCount');
+    const activeTabId = document.querySelector('.tab-content.active').id;
+    const selectedSet = activeTabId === 'productsTab' ? selectedProducts : selectedCollections;
+    
+    selectedCountElements.forEach(element => {
+        element.textContent = selectedSet.size;
+    });
+
+    // Update select all button state
+    const items = activeTabId === 'productsTab' ? products : collections;
+    const selectAllButton = document.getElementById('selectAllButton');
+    const icon = selectAllButton.querySelector('.material-icons');
+    
+    if (items.length > 0 && items.every(item => selectedSet.has(item.id))) {
+        icon.textContent = 'check';
+        selectAllButton.title = 'Deselect All';
+    } else {
+        icon.textContent = 'select_all';
+        selectAllButton.title = 'Select All';
     }
 }
 
