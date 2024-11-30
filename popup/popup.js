@@ -1165,23 +1165,35 @@ function createSelectedItemElement(item, type) {
  * Exports selected items based on export options
  * @param {Object} options - Export options for fields to include
  */
-function exportSelectedItems(options) {
+function exportSelectedItems() {
     try {
         log('Preparing data for export...', 'info', 'file_download');
         const results = [];
+
+        // Get export options from checkboxes
+        const options = {
+            name: document.getElementById('exportName')?.checked ?? true,
+            price: document.getElementById('exportPrice')?.checked ?? true,
+            description: document.getElementById('exportDescription')?.checked ?? true,
+            sku: document.getElementById('exportSKU')?.checked ?? true,
+            stock: document.getElementById('exportStock')?.checked ?? true,
+            images: document.getElementById('exportImages')?.checked ?? true
+        };
 
         // Process selected collections
         for (const id of selectedCollections) {
             const collection = collections.find(c => c.id === id);
             if (collection) {
-                results.push({
+                const item = {
                     type: 'collection',
-                    id: collection.id,
-                    name: collection.name,
-                    count: collection.count || 0,
-                    description: collection.description || '',
-                    url: collection.url || ''
-                });
+                    id: collection.id
+                };
+
+                if (options.name) item.name = collection.name || '';
+                if (options.description) item.description = collection.description || '';
+                if (options.images) item.images = collection.images ? collection.images.join(', ') : '';
+                
+                results.push(item);
             }
         }
 
@@ -1189,17 +1201,29 @@ function exportSelectedItems(options) {
         for (const id of selectedProducts) {
             const product = products.find(p => p.id === id);
             if (product) {
-                results.push({
+                const item = {
                     type: 'product',
-                    id: product.id,
-                    name: product.name,
-                    price: product.price_html || product.price || '',
-                    description: product.description || '',
-                    images: product.images ? product.images.join(', ') : '',
-                    stock_status: product.stock_status || '',
-                    categories: product.categories ? product.categories.join(', ') : '',
-                    url: product.url || ''
-                });
+                    id: product.id
+                };
+
+                if (options.name) item.name = product.name || '';
+                if (options.price) {
+                    // Extract numeric price and format it properly
+                    const priceText = product.price_html || product.price || '';
+                    const priceMatch = priceText.match(/[\d,.]+/);
+                    if (priceMatch) {
+                        const price = priceMatch[0].replace(/[^\d.]/g, '');
+                        item.price = parseFloat(price).toFixed(2);
+                    } else {
+                        item.price = '';
+                    }
+                }
+                if (options.description) item.description = product.description || '';
+                if (options.sku) item.sku = product.sku || '';
+                if (options.stock) item.stock_status = product.stock_status || '';
+                if (options.images) item.images = product.images ? product.images.join(', ') : '';
+                
+                results.push(item);
             }
         }
 
@@ -1231,7 +1255,7 @@ function exportSelectedItems(options) {
 function convertDataToCSV(data) {
     if (!data.length) return '';
 
-    // Get all possible headers from all items
+    // Get all possible headers from the data
     const headers = Array.from(new Set(
         data.reduce((acc, item) => [...acc, ...Object.keys(item)], [])
     ));
@@ -1251,6 +1275,23 @@ function convertDataToCSV(data) {
 
     return rows.join('\n');
 }
+
+// Initialize export button
+document.addEventListener('DOMContentLoaded', () => {
+    const exportButton = document.getElementById('exportSelected');
+    if (exportButton) {
+        // Remove any existing listeners
+        const newExportButton = exportButton.cloneNode(true);
+        exportButton.parentNode.replaceChild(newExportButton, exportButton);
+        
+        // Add new listener
+        newExportButton.addEventListener('click', () => {
+            if (!newExportButton.disabled) {
+                exportSelectedItems();
+            }
+        });
+    }
+});
 
 /**
  * Updates the count of selected items in the UI
