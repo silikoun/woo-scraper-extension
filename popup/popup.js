@@ -803,6 +803,27 @@ function switchTab(tabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    // Remove any existing event listeners by cloning the export button
+    const exportButton = document.getElementById('exportSelected');
+    if (exportButton) {
+        const newExportButton = exportButton.cloneNode(true);
+        exportButton.parentNode.replaceChild(newExportButton, exportButton);
+        
+        // Add single event listener for export
+        newExportButton.addEventListener('click', () => {
+            if (newExportButton.disabled) return;
+            
+            const options = {
+                includeImages: true,
+                includeDescription: true,
+                includePrice: true,
+                includeStock: true,
+                includeCategories: true
+            };
+            exportSelectedItems(options);
+        });
+    }
+
     // Get terminal element and verify it exists
     const terminal = document.getElementById('terminalContent');
     if (!terminal) {
@@ -896,25 +917,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Initialize export button
-    const exportButton = document.getElementById('exportSelected');
-    if (exportButton) {
-        exportButton.addEventListener('click', () => {
-            const options = {
-                includeImages: true,
-                includeDescription: true,
-                includePrice: true,
-                includeStock: true,
-                includeCategories: true
-            };
-            exportSelectedItems(options);
-        });
-
-        // Set initial state
-        const hasSelectedItems = selectedProducts.size > 0 || selectedCollections.size > 0;
-        exportButton.disabled = !hasSelectedItems;
-    }
-
     // Select All button functionality
     const selectAllButton = document.getElementById('selectAllButton');
     const clearSelectionButton = document.getElementById('clearSelection');
@@ -988,7 +990,6 @@ function initializeButtons() {
     const scrapeButton = document.getElementById('scrapeButton');
     const clearButton = document.getElementById('clearButton');
     const scrapeType = document.getElementById('scrapeType');
-    const exportButton = document.getElementById('exportSelected');
     
     if (scrapeButton && scrapeType) {
         scrapeButton.addEventListener('click', async () => {
@@ -1016,24 +1017,6 @@ function initializeButtons() {
 
     if (clearButton) {
         clearButton.addEventListener('click', clearSelection);
-    }
-
-    // Initialize export button
-    if (exportButton) {
-        exportButton.addEventListener('click', () => {
-            const options = {
-                includeImages: true,
-                includeDescription: true,
-                includePrice: true,
-                includeStock: true,
-                includeCategories: true
-            };
-            exportSelectedItems(options);
-        });
-
-        // Set initial state
-        const hasSelectedItems = selectedProducts.size > 0 || selectedCollections.size > 0;
-        exportButton.disabled = !hasSelectedItems;
     }
 
     // Set initial button states
