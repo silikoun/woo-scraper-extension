@@ -3,6 +3,8 @@
 <head>
     <title>Store Scraper</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="popup/popup.css">
     <style>
         body {
             width: 800px;
@@ -10,6 +12,16 @@
             padding: 20px;
             font-family: Arial, sans-serif;
             background: #f5f5f5;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .header {
@@ -23,23 +35,51 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        .header h1 {
-            margin: 0;
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-animation {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #007bff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            animation: spin 2s linear infinite;
+        }
+
+        .logo-animation .primary {
+            color: white;
             font-size: 24px;
-            color: #333;
+        }
+
+        .logo-animation .secondary {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            color: white;
+            font-size: 24px;
+            animation: spin 2s linear infinite reverse;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         .controls {
             display: flex;
             gap: 10px;
-            margin-bottom: 20px;
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        button {
+        .btn {
             border: none;
             padding: 8px 16px;
             border-radius: 4px;
@@ -52,23 +92,129 @@
             transition: background-color 0.2s;
         }
 
-        button:hover {
+        .btn:hover {
             background-color: #0056b3;
         }
 
-        button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
+        .btn-icon {
+            padding: 8px;
+            border-radius: 50%;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+
+        .btn-icon:hover {
+            background-color: #0056b3;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+        }
+
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+
+        .ripple {
+            position: relative;
+            overflow: hidden;
+            transform: translate3d(0, 0, 0);
+        }
+
+        .ripple:after {
+            content: "";
+            display: block;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            background-image: radial-gradient(circle, #fff 10%, transparent 10.01%);
+            background-repeat: no-repeat;
+            background-position: 50%;
+            transform: scale(10, 10);
+            opacity: 0;
+            transition: transform .5s, opacity 1s;
+        }
+
+        .ripple:active:after {
+            transform: scale(0, 0);
+            opacity: .3;
+            transition: 0s;
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            padding: 20px;
+        }
+
+        .search-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .search-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .search-container input {
+            border: none;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+        }
+
+        .view-toggle button {
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+
+        .view-toggle button.active {
+            background-color: #0056b3;
+        }
+
+        .products-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            padding: 20px;
         }
 
         .products-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 20px;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .product-card {
@@ -141,6 +287,52 @@
             background-color: #dc3545;
         }
 
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .pagination button {
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+
+        .pagination button:hover {
+            background-color: #0056b3;
+        }
+
+        .terminal-section {
+            margin-top: 20px;
+            background: #1e1e1e;
+            color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            height: 200px;
+            overflow-y: auto;
+        }
+
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .terminal-icon {
+            font-size: 16px;
+        }
+
+        .terminal-content {
+            padding: 10px;
+        }
+
         .loading {
             position: fixed;
             top: 0;
@@ -154,12 +346,25 @@
             z-index: 1000;
         }
 
-        .spinner {
+        .loader {
+            position: relative;
             width: 50px;
             height: 50px;
+            border-radius: 50%;
             border: 5px solid #f3f3f3;
             border-top: 5px solid #007bff;
+            animation: spin 1s linear infinite;
+        }
+
+        .loader-ring {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             border-radius: 50%;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #007bff;
             animation: spin 1s linear infinite;
         }
 
@@ -167,60 +372,82 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-
-        .terminal-container {
-            margin-top: 20px;
-            background: #1e1e1e;
-            color: #fff;
-            padding: 15px;
-            border-radius: 8px;
-            font-family: monospace;
-            height: 200px;
-            overflow-y: auto;
-        }
-
-        .terminal-line {
-            margin: 5px 0;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .terminal-line.info { color: #4fc3f7; }
-        .terminal-line.success { color: #4caf50; }
-        .terminal-line.error { color: #f44336; }
-        .terminal-line.warning { color: #ff9800; }
-
-        .terminal-icon {
-            font-size: 16px;
-        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Store Scraper</h1>
-        <div class="controls">
-            <button id="scrapeProducts">
-                <span class="material-icons">inventory_2</span>
-                Scrape Products
-            </button>
-            <button id="scrapeCollections">
-                <span class="material-icons">category</span>
-                Scrape Collections
-            </button>
+    <div class="app-container">
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo-animation">
+                    <span class="material-icons primary">shopping_cart</span>
+                    <span class="material-icons secondary">inventory_2</span>
+                </div>
+                <h1>Store Scraper</h1>
+            </div>
+            <div class="controls">
+                <button id="scrapeProducts" class="btn btn-primary ripple">
+                    <span class="material-icons">inventory_2</span>
+                    Scrape Products
+                </button>
+                <button id="scrapeCollections" class="btn btn-secondary ripple">
+                    <span class="material-icons">category</span>
+                    Scrape Collections
+                </button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="search-section">
+                <div class="search-container">
+                    <span class="material-icons">search</span>
+                    <input type="text" id="searchInput" placeholder="Search products..." />
+                </div>
+                <div class="view-toggle">
+                    <button class="btn-icon active" data-view="grid">
+                        <span class="material-icons">grid_view</span>
+                    </button>
+                    <button class="btn-icon" data-view="list">
+                        <span class="material-icons">view_list</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="productsContainer" class="products-container">
+                <div id="productsGrid" class="products-grid"></div>
+                <div class="pagination">
+                    <button id="prevPage" class="btn btn-icon">
+                        <span class="material-icons">chevron_left</span>
+                    </button>
+                    <span class="pagination-info">
+                        Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
+                    </span>
+                    <button id="nextPage" class="btn btn-icon">
+                        <span class="material-icons">chevron_right</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="terminal-section">
+            <div class="terminal-header">
+                <span class="material-icons">terminal</span>
+                <h3>Console Output</h3>
+                <button class="btn-icon" id="clearTerminal">
+                    <span class="material-icons">clear_all</span>
+                </button>
+            </div>
+            <div id="terminalContent" class="terminal-content"></div>
         </div>
     </div>
 
-    <div id="productsContainer" class="products-grid"></div>
-
-    <div class="terminal-container">
-        <div id="terminalContent"></div>
-    </div>
-
     <div class="loading">
-        <div class="spinner"></div>
+        <div class="loader">
+            <div class="loader-ring"></div>
+            <div class="loader-ring"></div>
+            <div class="loader-ring"></div>
+        </div>
     </div>
 
-    <script src="popup.js"></script>
+    <script src="popup/popup.js" defer></script>
 </body>
 </html>

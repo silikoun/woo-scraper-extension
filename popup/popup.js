@@ -643,15 +643,16 @@ function createCollectionCard(collection) {
  * Displays the scraped products in the UI
  */
 function displayProducts() {
+    console.log('Displaying products:', products.length);
     const container = document.getElementById('productsList');
     if (!container) {
-        log('Products list container not found', 'error', 'error');
+        log('Products container not found', 'error', 'error');
         return;
     }
 
     container.innerHTML = '';
 
-    if (!products.length) {
+    if (!products || products.length === 0) {
         log('No products found to display', 'warning', 'warning');
         const emptyMessage = document.createElement('div');
         emptyMessage.className = 'empty-message';
@@ -660,12 +661,20 @@ function displayProducts() {
         return;
     }
 
-    products.forEach(product => {
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    const endIdx = Math.min(startIdx + itemsPerPage, products.length);
+    const displayedProducts = products.slice(startIdx, endIdx);
+
+    console.log(`Displaying products ${startIdx + 1} to ${endIdx} of ${products.length}`);
+
+    displayedProducts.forEach(product => {
         const card = createProductCard(product);
         container.appendChild(card);
     });
 
-    log(`Displayed ${products.length} products`, 'success', 'check_circle');
+    log(`Displayed ${displayedProducts.length} products`, 'success', 'check_circle');
+    updatePagination();
+    updateSelectedCount();
 }
 
 /**
@@ -674,43 +683,76 @@ function displayProducts() {
  * @returns {HTMLElement} The product card element
  */
 function createProductCard(product) {
-    const template = document.getElementById('productTemplate');
-    if (!template) {
-        log('Product template not found', 'error', 'error');
-        return document.createElement('div');
-    }
+    console.log('Creating card for product:', product.id);
+    
+    const card = document.createElement('div');
+    card.className = 'product-card';
+    card.dataset.id = product.id;
 
-    const card = template.content.cloneNode(true).firstElementChild;
-    const imageElement = card.querySelector('.product-image');
-    const nameElement = card.querySelector('.item-name');
-    const priceElement = card.querySelector('.item-price');
-    const selectButton = card.querySelector('.select-button');
+    // Create checkbox for selection
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'product-checkbox';
+    checkbox.checked = selectedProducts.has(product.id);
+    checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+            selectedProducts.add(product.id);
+            log(`Selected product: ${product.name}`, 'info', 'check_circle');
+        } else {
+            selectedProducts.delete(product.id);
+            log(`Deselected product: ${product.name}`, 'info', 'remove_circle');
+        }
+        updateSelectedCount();
+        updateButtonStates();
+    });
 
-    if (imageElement && product.images && product.images.length > 0) {
-        imageElement.src = product.images[0];
-        imageElement.alt = product.name;
-    }
+    // Create main content container
+    const content = document.createElement('div');
+    content.className = 'product-content';
 
-    if (nameElement) nameElement.textContent = product.name;
-    if (priceElement) priceElement.textContent = product.price_html || product.price || 'Price not available';
-
-    if (selectButton) {
-        const icon = selectButton.querySelector('.material-icons');
-        selectButton.addEventListener('click', () => {
-            const isSelected = selectedProducts.has(product.id);
-            if (isSelected) {
-                selectedProducts.delete(product.id);
-                icon.textContent = 'add';
-                log(`Removed product: ${product.name}`, 'info', 'remove_circle');
-            } else {
-                selectedProducts.add(product.id);
-                icon.textContent = 'check';
-                log(`Added product: ${product.name}`, 'info', 'add_circle');
-            }
-            updateSelectedCount();
-            updateSelectedItemsList();
+    // Add product image if available
+    if (product.images && product.images.length > 0) {
+        const imageContainer = document.createElement('div');
+        imageContainer.className = 'product-image-container';
+        
+        const img = document.createElement('img');
+        img.src = product.images[0];
+        img.alt = product.name;
+        img.className = 'product-image';
+        img.addEventListener('error', () => {
+            img.src = 'placeholder.png'; // Add a placeholder image
+            img.alt = 'Image not available';
         });
+        
+        imageContainer.appendChild(img);
+        content.appendChild(imageContainer);
     }
+
+    // Add product details
+    const details = document.createElement('div');
+    details.className = 'product-details';
+
+    const name = document.createElement('h3');
+    name.className = 'product-name';
+    name.textContent = product.name || 'Unnamed Product';
+
+    const price = document.createElement('p');
+    price.className = 'product-price';
+    const formattedPrice = formatPrice(product.price_html || product.price);
+    price.textContent = formattedPrice || 'Price not available';
+
+    const description = document.createElement('p');
+    description.className = 'product-description';
+    description.textContent = product.short_description || product.description || 'No description available';
+
+    details.appendChild(name);
+    details.appendChild(price);
+    details.appendChild(description);
+    content.appendChild(details);
+
+    // Add checkbox and content to card
+    card.appendChild(checkbox);
+    card.appendChild(content);
 
     return card;
 }
@@ -1346,4 +1388,54 @@ function showToast(message, error = false) {
     setTimeout(() => {
         toast.classList.remove('visible');
     }, 3000);
+}
+
+/**
+ * Formats a price string to ensure consistent decimal separator (comma)
+ * and proper currency symbol placement.
+ * 
+ * @param {string|number} priceStr - The price to format
+ * @returns {string} Formatted price string
+ */
+function formatPrice(priceStr) {
+    if (!priceStr) return '';
+    
+    // Log input for debugging
+    console.log('Price input:', priceStr);
+    
+    // Convert to string if number
+    let price = priceStr.toString();
+    
+    // Handle HTML content if present
+    if (price.includes('<')) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = price;
+        price = tempDiv.textContent || tempDiv.innerText;
+    }
+    
+    // Remove currency symbols and whitespace
+    price = price.replace(/[^\d.,]/g, '').trim();
+    console.log('After cleaning:', price);
+    
+    // Handle different decimal separators
+    if (price.includes('.') && price.includes(',')) {
+        // European format (1.234,56)
+        price = price.replace(/\./g, '').replace(',', '.');
+    } else if (price.includes(',')) {
+        // Single comma format
+        price = price.replace(',', '.');
+    }
+    
+    console.log('Before parsing:', price);
+    
+    // Parse and format
+    const numPrice = parseFloat(price);
+    if (isNaN(numPrice)) {
+        console.log('Failed to parse price');
+        return '';
+    }
+    
+    const formatted = numPrice.toFixed(2).replace('.', ',');
+    console.log('Final formatted price:', formatted);
+    return formatted;
 }
