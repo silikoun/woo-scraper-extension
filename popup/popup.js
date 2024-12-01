@@ -24,42 +24,59 @@ const PLATFORM = {
  * @param {string} icon - Material icon name to display
  */
 function log(message, type = 'info', icon = '') {
-    let terminal = document.getElementById('terminalContent');
+    const logContainer = document.querySelector('.log-container');
+    const logContent = document.querySelector('.log-content');
     
-    // If terminal doesn't exist, create it
-    if (!terminal) {
-        const container = document.querySelector('.content');
-        if (!container) {
-            console.error('Container element not found');
-            return;
-        }
-        
-        const terminalDiv = document.createElement('div');
-        terminalDiv.className = 'terminal';
-        
-        terminal = document.createElement('div');
-        terminal.id = 'terminalContent';
-        terminal.className = 'terminal-content';
-        
-        terminalDiv.appendChild(terminal);
-        container.appendChild(terminalDiv);
+    if (!logContainer || !logContent) return;
+    
+    // Show the log container if it's hidden
+    logContainer.style.display = 'block';
+    
+    // Create log entry
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${type}`;
+    
+    // Add icon if provided
+    if (icon) {
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'material-icons';
+        iconSpan.textContent = icon;
+        entry.appendChild(iconSpan);
     }
-
-    // Create a new terminal line
-    const line = document.createElement('div');
-    line.className = `terminal-line ${type}`;
     
-    // Format timestamp in 12-hour format
-    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: true });
-    const iconSpan = icon ? `<span class="material-icons terminal-icon">${icon}</span>` : '';
+    // Add message
+    const messageSpan = document.createElement('span');
+    messageSpan.textContent = message;
+    entry.appendChild(messageSpan);
     
-    // Construct and append the message
-    line.innerHTML = `${iconSpan}[${timestamp}] ${message}`;
-    terminal.appendChild(line);
+    // Add to container
+    logContent.appendChild(entry);
     
-    // Auto-scroll to bottom
-    terminal.scrollTop = terminal.scrollHeight;
+    // Scroll to bottom
+    logContent.scrollTop = logContent.scrollHeight;
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        entry.style.opacity = '0';
+        setTimeout(() => {
+            entry.remove();
+            // Hide container if no more entries
+            if (logContent.children.length === 0) {
+                logContainer.style.display = 'none';
+            }
+        }, 300);
+    }, 5000);
 }
+
+// Clear logs
+document.getElementById('clearLogs')?.addEventListener('click', () => {
+    const logContent = document.querySelector('.log-content');
+    const logContainer = document.querySelector('.log-container');
+    if (logContent) {
+        logContent.innerHTML = '';
+        logContainer.style.display = 'none';
+    }
+});
 
 /**
  * Clears all messages from the terminal
@@ -79,19 +96,6 @@ function updatePagination() {
     document.getElementById('totalPages').textContent = totalPages;
     document.getElementById('prevPage').disabled = currentPage === 1;
     document.getElementById('nextPage').disabled = currentPage === totalPages;
-}
-
-/**
- * Updates the pagination UI based on current page and total pages
- */
-function updatePagination() {
-    const paginationElement = document.getElementById('pagination');
-    if (!paginationElement) {
-        console.warn('Pagination element not found');
-        return;
-    }
-    
-    paginationElement.textContent = `Page ${currentPage} of ${totalPages}`;
 }
 
 // Platform Detection
@@ -136,7 +140,7 @@ async function detectPlatform(baseUrl) {
  */
 async function scrapeProducts() {
     try {
-        showLoading(true);
+        setLoading(true);
         clearTerminal();
         log('Starting product scrape...', 'info', 'hourglass_empty');
 
@@ -167,14 +171,14 @@ async function scrapeProducts() {
         currentPage = 1;
 
         log(`Successfully scraped ${products.length} products`, 'success', 'check_circle');
-        displayProducts();
+        filterProducts();
         updatePagination();
 
     } catch (error) {
         log(`Error: ${error.message}`, 'error', 'error');
         console.error('Scraping error:', error);
     } finally {
-        showLoading(false);
+        setLoading(false);
     }
 }
 
@@ -296,276 +300,194 @@ async function scrapeShopifyProducts(baseUrl) {
  * Scrapes collections from the detected platform
  */
 async function scrapeCollections() {
+    setLoading(true);
+    collections = [];
+    selectedCollections.clear();
+
     try {
-        showLoading(true);
-        clearTerminal();
-        log('Starting collections scrape...', 'info', 'hourglass_empty');
+        const baseUrl = await getBaseUrl();
+        if (!baseUrl) {
+            throw new Error('Could not determine store URL');
+        }
 
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.url) throw new Error('No active tab found');
-
-        const baseUrl = new URL(tab.url).origin;
-        log(`Target URL: ${baseUrl}`, 'info', 'link');
-
-        // Detect platform if not already detected
         if (!detectedPlatform) {
-            detectedPlatform = await detectPlatform(baseUrl);
+            await detectPlatform(baseUrl);
         }
 
-        if (detectedPlatform === PLATFORM.UNKNOWN) {
-            throw new Error('Unsupported platform');
+        log('Fetching collections...', 'info', 'sync');
+
+        switch (detectedPlatform) {
+            case PLATFORM.WOOCOMMERCE:
+                collections = await scrapeWooCommerceCollections(baseUrl);
+                break;
+            case PLATFORM.SHOPIFY:
+                collections = await scrapeShopifyCollections(baseUrl);
+                break;
+            default:
+                throw new Error('Unsupported platform');
         }
 
-        let fetchedCollections = [];
-        if (detectedPlatform === PLATFORM.WOOCOMMERCE) {
-            fetchedCollections = await scrapeWooCommerceCollections(baseUrl);
-        } else if (detectedPlatform === PLATFORM.SHOPIFY) {
-            fetchedCollections = await scrapeShopifyCollections(baseUrl);
-        }
-
-        collections = fetchedCollections;
-        log(`Successfully scraped ${collections.length} collections`, 'success', 'check_circle');
+        log(`Found ${collections.length} collections`, 'success', 'check_circle');
         displayCollections();
-
     } catch (error) {
         log(`Error: ${error.message}`, 'error', 'error');
-        console.error('Collections scraping error:', error);
     } finally {
-        showLoading(false);
+        setLoading(false);
+        updateButtonStates();
     }
 }
 
 /**
- * Scrapes WooCommerce collections from the provided base URL
+ * Scrapes WooCommerce collections
  * @param {string} baseUrl - The base URL of the WooCommerce platform
  * @returns {array} The scraped WooCommerce collections
  */
 async function scrapeWooCommerceCollections(baseUrl) {
-    const results = [];
+    const collections = [];
     let page = 1;
     let hasMore = true;
-    const perPage = 100; // Maximum allowed by WooCommerce API
+    
+    while (hasMore) {
+        try {
+            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products/categories?per_page=100&page=${page}`);
+            if (!response.ok) throw new Error('Failed to fetch collections');
+            
+            const data = await response.json();
+            if (!data || data.length === 0) {
+                hasMore = false;
+                break;
+            }
+            
+            // For each collection, fetch its products
+            for (const cat of data) {
+                const collectionProducts = await scrapeWooCommerceCollectionProducts(baseUrl, cat.id);
+                collections.push({
+                    id: cat.id.toString(),
+                    name: cat.name,
+                    slug: cat.slug,
+                    description: cat.description,
+                    count: cat.count,
+                    image: cat.image?.src || null,
+                    parent: cat.parent,
+                    products: collectionProducts
+                });
+                
+                log(`Scraped ${collectionProducts.length} products from collection: ${cat.name}`, 'info', 'info');
+            }
+            
+            page++;
+        } catch (error) {
+            log(`Error fetching collections: ${error.message}`, 'error', 'error');
+            hasMore = false;
+        }
+    }
+    
+    return collections;
+}
+
+async function scrapeWooCommerceCollectionProducts(baseUrl, categoryId) {
+    const products = [];
+    let page = 1;
+    let hasMore = true;
 
     while (hasMore) {
         try {
-            // Try WooCommerce Store API first (public, no auth needed)
-            const storeUrl = `${baseUrl}/wp-json/wc/store/v1/products/categories?per_page=${perPage}&page=${page}`;
-            const response = await fetch(storeUrl, {
-                headers: {
-                    'Accept': 'application/json'
-                }
-            });
-            
-            if (!response.ok) {
-                if (response.status === 401) {
-                    // If Store API fails, try WordPress REST API
-                    const wpUrl = `${baseUrl}/wp-json/wp/v2/product_cat?per_page=${perPage}&page=${page}&_embed`;
-                    const wpResponse = await fetch(wpUrl, {
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    });
+            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products?category=${categoryId}&per_page=100&page=${page}&status=publish`);
+            if (!response.ok) throw new Error(`Failed to fetch products for category ${categoryId}`);
 
-                    if (!wpResponse.ok) {
-                        throw new Error(`Failed to fetch collections. Status: ${wpResponse.status}`);
-                    }
-
-                    const wpCategories = await wpResponse.json();
-                    const processedCategories = wpCategories.map(category => ({
-                        id: category.id,
-                        name: category.name || '',
-                        description: category.description || '',
-                        count: category.count || 0,
-                        image: category._embedded?.['wp:featuredmedia']?.[0]?.source_url || null
-                    }));
-                    results.push(...processedCategories);
-                } else {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-            } else {
-                const categories = await response.json();
-                if (categories.length === 0) {
-                    hasMore = false;
-                    break;
-                }
-                
-                results.push(...categories);
+            const data = await response.json();
+            if (!data || data.length === 0) {
+                hasMore = false;
+                break;
             }
-            
-            log(`Fetched ${results.length} collections...`, 'info', 'download');
-            
-            // Check if we have more pages from headers
-            const totalPages = parseInt(response.headers.get('X-WP-TotalPages')) || 1;
-            hasMore = page < totalPages;
+
+            products.push(...data.map(product => ({
+                id: product.id.toString(),
+                title: product.name,
+                sku: product.sku,
+                price: product.price,
+                regular_price: product.regular_price,
+                sale_price: product.sale_price,
+                stock_status: product.stock_status,
+                description: product.description,
+                short_description: product.short_description,
+                categories: product.categories.map(cat => cat.name),
+                images: product.images.map(img => img.src),
+                variations: product.variations,
+                attributes: product.attributes,
+                url: product.permalink
+            })));
+
             page++;
-            
-            // Add a small delay to avoid overwhelming the server
-            await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-            console.error('Error fetching collections:', error);
-            log(`Error fetching collections: ${error.message}`, 'error', 'error');
-            break;
+            log(`Error fetching products for category ${categoryId}: ${error.message}`, 'error', 'error');
+            hasMore = false;
         }
     }
 
-    return results;
+    return products;
 }
 
 /**
- * Scrapes Shopify collections from the provided base URL
+ * Scrapes Shopify collections
  * @param {string} baseUrl - The base URL of the Shopify platform
  * @returns {array} The scraped Shopify collections
  */
 async function scrapeShopifyCollections(baseUrl) {
     try {
         const response = await fetch(`${baseUrl}/collections.json`);
-        if (!response.ok) {
-            throw new Error('Failed to fetch Shopify collections');
-        }
-
+        if (!response.ok) throw new Error('Failed to fetch Shopify collections');
+        
         const data = await response.json();
-        return data.collections || [];
+        const collections = [];
 
+        // For each collection, fetch its products
+        for (const collection of data.collections) {
+            const collectionProducts = await scrapeShopifyCollectionProducts(baseUrl, collection.handle);
+            collections.push({
+                id: collection.id,
+                name: collection.title,
+                description: collection.description,
+                handle: collection.handle,
+                image: collection.image?.src || null,
+                products: collectionProducts
+            });
+
+            // Log progress
+            log(`Scraped ${collectionProducts.length} products from collection: ${collection.title}`, 'info', 'info');
+        }
+
+        return collections;
     } catch (error) {
-        throw new Error(`Shopify collections scraping failed: ${error.message}`);
-    }
-}
-
-/**
- * Scrapes a single product by ID
- * @param {number} productId - The ID of the product to scrape
- * @returns {Promise<Object>} The scraped product data
- */
-async function scrapeProduct(productId) {
-    try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.url) {
-            throw new Error('No active tab found');
-        }
-
-        const baseUrl = new URL(tab.url).origin;
-        log(`Fetching product ${productId}`, 'info', 'shopping_cart');
-
-        // Try WooCommerce REST API v3 first
-        try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products/${productId}`);
-            if (response.ok) {
-                const product = await response.json();
-                return {
-                    id: product.id,
-                    name: product.name,
-                    price: product.price || product.regular_price || '0',
-                    description: product.description || '',
-                    sku: product.sku || '',
-                    inStock: product.in_stock,
-                    images: product.images?.map(img => img.src) || []
-                };
-            }
-        } catch (error) {
-            log('Trying alternative endpoint...', 'info', 'sync');
-        }
-
-        // Try WooCommerce Store API
-        try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/store/v1/products/${productId}`);
-            if (response.ok) {
-                const product = await response.json();
-                return {
-                    id: product.id,
-                    name: product.name,
-                    price: product.prices?.price || product.prices?.regular_price || '0',
-                    description: product.description || '',
-                    sku: product.sku || '',
-                    inStock: product.is_in_stock,
-                    images: product.images?.map(img => img.src) || []
-                };
-            }
-        } catch (error) {
-            log('Product not found', 'error', 'error');
-            return null;
-        }
-    } catch (error) {
-        log(`Failed to scrape product ${productId}: ${error.message}`, 'error', 'error');
-        return null;
-    }
-}
-
-/**
- * Scrapes all products from a collection
- * @param {number} collectionId - The ID of the collection to scrape
- * @returns {Promise<Array>} The scraped products
- */
-async function scrapeCollection(collectionId) {
-    try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.url) {
-            throw new Error('No active tab found');
-        }
-
-        const baseUrl = new URL(tab.url).origin;
-        const collection = collections.find(c => c.id === collectionId);
-        log(`Fetching products from collection: ${collection?.name || collectionId}`, 'info', 'folder_open');
-
-        // Try WooCommerce REST API v3 first
-        try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products?category=${collectionId}&per_page=100`);
-            if (response.ok) {
-                const products = await response.json();
-                return products.map(product => ({
-                    id: product.id,
-                    name: product.name,
-                    price: product.price || product.regular_price || '0',
-                    description: product.description || '',
-                    sku: product.sku || '',
-                    inStock: product.in_stock,
-                    images: product.images?.map(img => img.src) || []
-                }));
-            }
-        } catch (error) {
-            log('Trying alternative endpoint...', 'info', 'sync');
-        }
-
-        // Try WooCommerce Store API
-        const response = await fetch(`${baseUrl}/wp-json/wc/store/v1/products?category=${collectionId}&per_page=100`);
-        if (response.ok) {
-            const products = await response.json();
-            return products.map(product => ({
-                id: product.id,
-                name: product.name,
-                price: product.prices?.price || product.prices?.regular_price || '0',
-                description: product.description || '',
-                sku: product.sku || '',
-                inStock: product.is_in_stock,
-                images: product.images?.map(img => img.src) || []
-            }));
-        }
-
-        throw new Error(`Failed to fetch products for collection ${collectionId}`);
-    } catch (error) {
-        log(`Failed to scrape collection ${collectionId}: ${error.message}`, 'error', 'error');
+        log(`Error fetching Shopify collections: ${error.message}`, 'error', 'error');
         return [];
     }
 }
 
-/**
- * Processes raw WooCommerce collection data into a standardized format
- * @param {array} rawCollections - The raw WooCommerce collection data
- * @returns {array} The processed WooCommerce collections
- */
-function processCollections(rawCollections) {
-    if (!Array.isArray(rawCollections)) {
-        console.error('Collections data is not an array:', rawCollections);
-        throw new Error('Invalid collections data format');
+async function scrapeShopifyCollectionProducts(baseUrl, handle) {
+    try {
+        const response = await fetch(`${baseUrl}/collections/${handle}/products.json`);
+        if (!response.ok) throw new Error(`Failed to fetch products for collection ${handle}`);
+
+        const data = await response.json();
+        return data.products.map(product => ({
+            id: product.id.toString(),
+            title: product.title,
+            handle: product.handle,
+            description: product.body_html,
+            price: product.variants[0]?.price,
+            compare_at_price: product.variants[0]?.compare_at_price,
+            sku: product.variants[0]?.sku,
+            stock_status: product.variants[0]?.available ? 'instock' : 'outofstock',
+            images: product.images.map(img => img.src),
+            variants: product.variants,
+            options: product.options,
+            url: `${baseUrl}/products/${product.handle}`
+        }));
+    } catch (error) {
+        log(`Error fetching products for collection ${handle}: ${error.message}`, 'error', 'error');
+        return [];
     }
-    
-    return rawCollections.map(collection => ({
-        id: collection.id,
-        name: collection.name,
-        count: collection.count || 0,
-        description: collection.description || '',
-        slug: collection.slug || '',
-        parent: collection.parent || 0
-    }));
 }
 
 // Display Functions
@@ -573,20 +495,12 @@ function processCollections(rawCollections) {
  * Displays the scraped collections in the UI
  */
 function displayCollections() {
-    const container = document.getElementById('collectionsList');
-    if (!container) {
-        log('Collections list container not found', 'error', 'error');
-        return;
-    }
+    const container = document.getElementById('collectionsContent');
+    if (!container) return;
 
     container.innerHTML = '';
-
     if (!collections.length) {
-        log('No collections found to display', 'warning', 'warning');
-        const emptyMessage = document.createElement('div');
-        emptyMessage.className = 'empty-message';
-        emptyMessage.textContent = 'No collections found';
-        container.appendChild(emptyMessage);
+        container.innerHTML = '<div class="no-items">No collections found</div>';
         return;
     }
 
@@ -594,47 +508,75 @@ function displayCollections() {
         const card = createCollectionCard(collection);
         container.appendChild(card);
     });
-
-    log(`Displayed ${collections.length} collections`, 'success', 'check_circle');
 }
 
 /**
- * Creates a collection card element for the provided collection
+ * Creates a collection card element
  * @param {object} collection - The collection data
  * @returns {HTMLElement} The collection card element
  */
 function createCollectionCard(collection) {
-    const template = document.getElementById('collectionTemplate');
-    if (!template) {
-        log('Collection template not found', 'error', 'error');
-        return document.createElement('div');
-    }
+    const card = document.createElement('div');
+    card.className = 'collection-card';
+    card.dataset.id = collection.id;
 
-    const card = template.content.cloneNode(true).firstElementChild;
-    const nameElement = card.querySelector('.item-name');
-    const countElement = card.querySelector('.item-count');
-    const selectButton = card.querySelector('.select-button');
+    const selected = selectedCollections.has(collection.id);
+    if (selected) card.classList.add('selected');
 
-    if (nameElement) nameElement.textContent = collection.name;
-    if (countElement) countElement.textContent = `${collection.count || 0} products`;
+    // Create collection header
+    const header = document.createElement('div');
+    header.className = 'collection-header';
+    header.innerHTML = `
+        <h3>${collection.name}</h3>
+        <span class="product-count">${collection.products.length} products</span>
+    `;
+    card.appendChild(header);
+
+    // Create products grid
+    const productsGrid = document.createElement('div');
+    productsGrid.className = 'collection-products';
     
-    if (selectButton) {
-        const icon = selectButton.querySelector('.material-icons');
-        selectButton.addEventListener('click', () => {
-            const isSelected = selectedCollections.has(collection.id);
-            if (isSelected) {
-                selectedCollections.delete(collection.id);
-                icon.textContent = 'add';
-                log(`Removed collection: ${collection.name}`, 'info', 'remove_circle');
-            } else {
-                selectedCollections.add(collection.id);
-                icon.textContent = 'check';
-                log(`Added collection: ${collection.name}`, 'info', 'add_circle');
-            }
-            updateSelectedCount();
-            updateSelectedItemsList();
-        });
+    // Add first 4 products as preview
+    collection.products.slice(0, 4).forEach(product => {
+        const productPreview = document.createElement('div');
+        productPreview.className = 'product-preview';
+        productPreview.innerHTML = `
+            <img src="${product.images[0] || 'placeholder.jpg'}" alt="${product.title}">
+            <div class="product-info">
+                <div class="product-title">${product.title}</div>
+                <div class="product-price">${formatPrice(product.price)}</div>
+            </div>
+        `;
+        productsGrid.appendChild(productPreview);
+    });
+
+    if (collection.products.length > 4) {
+        const moreProducts = document.createElement('div');
+        moreProducts.className = 'more-products';
+        moreProducts.textContent = `+${collection.products.length - 4} more`;
+        productsGrid.appendChild(moreProducts);
     }
+
+    card.appendChild(productsGrid);
+
+    // Add click handler
+    card.addEventListener('click', (e) => {
+        if (e.target.closest('.product-preview')) {
+            // Handle product click
+            return;
+        }
+        
+        const id = collection.id;
+        if (selectedCollections.has(id)) {
+            selectedCollections.delete(id);
+            card.classList.remove('selected');
+        } else {
+            selectedCollections.add(id);
+            card.classList.add('selected');
+        }
+        updateSelectedCount();
+        updateButtonStates();
+    });
 
     return card;
 }
@@ -644,7 +586,7 @@ function createCollectionCard(collection) {
  */
 function displayProducts() {
     console.log('Displaying products:', products.length);
-    const container = document.getElementById('productsList');
+    const container = document.getElementById('productsGrid');
     if (!container) {
         log('Products container not found', 'error', 'error');
         return;
@@ -759,58 +701,134 @@ function createProductCard(product) {
 
 // Filter Functions
 /**
- * Sets up event listeners for filter inputs
- */
-function setupFilters() {
-    const searchInput = document.getElementById('searchInput');
-    const categoryFilter = document.getElementById('categoryFilter');
-    const stockFilter = document.getElementById('stockFilter');
-
-    if (searchInput) {
-        searchInput.addEventListener('input', filterProducts);
-    }
-
-    if (categoryFilter) {
-        categoryFilter.addEventListener('change', filterProducts);
-    }
-
-    if (stockFilter) {
-        stockFilter.addEventListener('change', filterProducts);
-    }
-}
-
-/**
  * Filters products based on search term, category, and stock status
  */
 function filterProducts() {
-    const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
-    const categoryValue = document.getElementById('categoryFilter')?.value || '';
-    const stockValue = document.getElementById('stockFilter')?.value || '';
+    const searchInput = document.getElementById('searchInput');
+    const searchBy = document.getElementById('searchBy');
+    const stockSelect = document.getElementById('stockStatus');
+    const priceRange = document.getElementById('priceRange');
+    const sortSelect = document.getElementById('sortBy');
 
-    const filteredProducts = products.filter(product => {
-        const matchesSearch = product.name.toLowerCase().includes(searchTerm);
-        const matchesCategory = !categoryValue || (product.categories && product.categories.some(cat => cat.id.toString() === categoryValue));
-        const matchesStock = !stockValue || product.stock_status === stockValue;
+    if (!searchInput || !searchBy || !stockSelect || !priceRange || !sortSelect) {
+        console.warn('Filter elements not found');
+        return;
+    }
 
-        return matchesSearch && matchesCategory && matchesStock;
-    });
+    const searchTerm = searchInput.value.toLowerCase();
+    const searchField = searchBy.value;
+    const stockFilter = stockSelect.value;
+    const priceFilter = priceRange.value;
+    const sortBy = sortSelect.value;
 
-    // Update pagination for filtered results
-    totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-    currentPage = 1;
+    let filteredProducts = [...products];
 
-    // Display filtered products
+    // Apply search filter
+    if (searchTerm) {
+        filteredProducts = filteredProducts.filter(product => {
+            if (searchField === 'all') {
+                return (
+                    product.name.toLowerCase().includes(searchTerm) ||
+                    (product.sku && product.sku.toLowerCase().includes(searchTerm)) ||
+                    (product.description && product.description.toLowerCase().includes(searchTerm))
+                );
+            } else if (searchField === 'title') {
+                return product.name.toLowerCase().includes(searchTerm);
+            } else if (searchField === 'sku') {
+                return product.sku && product.sku.toLowerCase().includes(searchTerm);
+            } else if (searchField === 'description') {
+                return product.description && product.description.toLowerCase().includes(searchTerm);
+            }
+            return false;
+        });
+    }
+
+    // Apply stock filter
+    if (stockFilter !== 'all') {
+        filteredProducts = filteredProducts.filter(product => {
+            if (stockFilter === 'instock') {
+                return product.inStock;
+            } else {
+                return !product.inStock;
+            }
+        });
+    }
+
+    // Apply price filter
+    if (priceFilter !== 'all') {
+        filteredProducts = filteredProducts.filter(product => {
+            const price = parseFloat(product.price);
+            switch (priceFilter) {
+                case 'under10':
+                    return price < 10;
+                case '10to50':
+                    return price >= 10 && price <= 50;
+                case '50to100':
+                    return price > 50 && price <= 100;
+                case 'over100':
+                    return price > 100;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    // Apply sorting
+    filteredProducts = sortProducts(filteredProducts, sortBy);
+
+    // Update display
+    const productsGrid = document.getElementById('productsGrid');
+    if (!productsGrid) {
+        console.warn('Products grid element not found');
+        return;
+    }
+
+    productsGrid.innerHTML = '';
+    
+    if (filteredProducts.length === 0) {
+        productsGrid.innerHTML = '<div class="no-results">No products found</div>';
+        return;
+    }
+
+    // Calculate pagination
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    const container = document.getElementById('productsList');
-    container.innerHTML = '';
+    const productsToShow = filteredProducts.slice(startIndex, endIndex);
 
-    filteredProducts.slice(startIndex, endIndex).forEach(product => {
+    // Display products
+    productsToShow.forEach(product => {
         const card = createProductCard(product);
-        container.appendChild(card);
+        productsGrid.appendChild(card);
     });
 
+    // Update total pages
+    totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
     updatePagination();
+}
+
+function sortProducts(products, sortBy) {
+    return [...products].sort((a, b) => {
+        switch (sortBy) {
+            case 'price_asc':
+                return parseFloat(a.price) - parseFloat(b.price);
+            case 'price_desc':
+                return parseFloat(b.price) - parseFloat(a.price);
+            case 'name_asc':
+                return a.name.localeCompare(b.name);
+            case 'name_desc':
+                return b.name.localeCompare(a.name);
+            case 'sku_asc':
+                return (a.sku || '').localeCompare(b.sku || '');
+            case 'sku_desc':
+                return (b.sku || '').localeCompare(a.sku || '');
+            case 'stock_asc':
+                return (a.stockQuantity || 0) - (b.stockQuantity || 0);
+            case 'stock_desc':
+                return (b.stockQuantity || 0) - (a.stockQuantity || 0);
+            default:
+                return 0;
+        }
+    });
 }
 
 // Tab Functions
@@ -818,11 +836,23 @@ function filterProducts() {
  * Sets up event listeners for tab buttons
  */
 function setupTabs() {
-    const tabButtons = document.querySelectorAll('.tab-button');
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const tabId = button.dataset.tab;
-            switchTab(tabId);
+    const tabs = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // Remove active class from all tabs and contents
+            tabs.forEach(t => t.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            // Add active class to clicked tab and corresponding content
+            tab.classList.add('active');
+            const contentId = tab.id.replace('Tab', 'Content');
+            document.getElementById(contentId)?.classList.add('active');
+
+            // Update UI based on active tab
+            updateSelectedCount();
+            updateButtonStates();
         });
     });
 }
@@ -848,166 +878,434 @@ function switchTab(tabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Remove any existing event listeners by cloning the export button
-    const exportButton = document.getElementById('exportSelected');
-    if (exportButton) {
-        const newExportButton = exportButton.cloneNode(true);
-        exportButton.parentNode.replaceChild(newExportButton, exportButton);
-        
-        // Add single event listener for export
-        newExportButton.addEventListener('click', () => {
-            if (newExportButton.disabled) return;
+    // Initialize UI elements
+    const searchInput = document.getElementById('searchInput');
+    const searchBy = document.getElementById('searchBy');
+    const stockSelect = document.getElementById('stockStatus');
+    const priceRange = document.getElementById('priceRange');
+    const sortSelect = document.getElementById('sortBy');
+    const scrapeButton = document.getElementById('scrapeButton');
+    const clearButton = document.getElementById('clearButton');
+    const selectAllButton = document.getElementById('selectAll');
+
+    // Set up filter event listeners
+    if (searchInput) {
+        searchInput.addEventListener('input', filterProducts);
+    }
+    if (searchBy) {
+        searchBy.addEventListener('change', filterProducts);
+    }
+    if (stockSelect) {
+        stockSelect.addEventListener('change', filterProducts);
+    }
+    if (priceRange) {
+        priceRange.addEventListener('change', filterProducts);
+    }
+    if (sortSelect) {
+        sortSelect.addEventListener('change', filterProducts);
+    }
+
+    // Set up other event listeners
+    if (scrapeButton) {
+        scrapeButton.addEventListener('click', async () => {
+            if (isLoading) return;
             
-            const options = {
-                includeImages: true,
-                includeDescription: true,
-                includePrice: true,
-                includeStock: true,
-                includeCategories: true
-            };
-            exportSelectedItems(options);
+            try {
+                setLoading(true);
+                // Use the active tab to determine what to scrape
+                const type = activeTab === 'productsTab' ? 'products' : 'collections';
+                
+                if (type === 'products') {
+                    await scrapeProducts();
+                    displayProducts();
+                } else if (type === 'collections') {
+                    await scrapeCollections();
+                    displayCollections();
+                }
+            } catch (error) {
+                console.error('Error scraping:', error);
+                log(`Error: ${error.message}`, 'error', 'error');
+            } finally {
+                setLoading(false);
+            }
         });
     }
 
-    // Get terminal element and verify it exists
-    const terminal = document.getElementById('terminalContent');
-    if (!terminal) {
-        console.error('Terminal element not found during initialization');
-        return;
-    }
-
-    // Clear terminal and show initial ready message
-    clearTerminal();
-    log('Ready to scrape products and collections', 'info', 'check_circle');
-
-    // Setup event listeners and initialize UI components
-    setupTabs();
-    setupFilters();
-    updateUI();
-
-    // Button state management
-    function updateButtonStates() {
-        const scrapeButton = document.getElementById('scrapeButton');
-        const clearButton = document.getElementById('clearButton');
-        const exportButton = document.getElementById('exportSelected');
-        const hasSelectedItems = selectedProducts.size > 0 || selectedCollections.size > 0;
-        
-        if (scrapeButton) {
-            scrapeButton.disabled = !hasSelectedItems;
-            scrapeButton.style.cursor = hasSelectedItems ? 'pointer' : 'not-allowed';
-        }
-        
-        if (clearButton) {
-            clearButton.disabled = !hasSelectedItems;
-            clearButton.style.cursor = hasSelectedItems ? 'pointer' : 'not-allowed';
-        }
-        
-        if (exportButton) {
-            exportButton.disabled = !hasSelectedItems;
-        }
-    }
-
-    // Loading state management
-    function setLoading(loading) {
-        isLoading = loading;
-        const scrapeButton = document.getElementById('scrapeButton');
-        const loadingSpinner = document.getElementById('loadingSpinner');
-        
-        if (scrapeButton) {
-            scrapeButton.disabled = loading;
-            scrapeButton.style.cursor = loading ? 'not-allowed' : 'pointer';
-        }
-        
-        if (loadingSpinner) {
-            loadingSpinner.style.display = loading ? 'inline-block' : 'none';
-        }
-    }
-
-    // Event Listeners
-    document.getElementById('scrapeButton').addEventListener('click', async () => {
-        if (isLoading) return;
-        
-        try {
-            setLoading(true);
-            const type = document.getElementById('scrapeType').value;
-            
-            if (type === 'products') {
-                await scrapeProducts();
-                displayProducts();
-            } else if (type === 'collections') {
-                await scrapeCollections();
-                displayCollections();
+    if (clearButton) {
+        clearButton.addEventListener('click', () => {
+            products = [];
+            selectedProducts.clear();
+            currentPage = 1;
+            totalPages = 1;
+            const productsGrid = document.getElementById('productsGrid');
+            if (productsGrid) {
+                productsGrid.innerHTML = '';
             }
-        } catch (error) {
-            console.error('Error scraping:', error);
-            log(`Error: ${error.message}`, 'error', 'error');
-        } finally {
-            setLoading(false);
-        }
-    });
-
-    document.getElementById('clearButton').addEventListener('click', () => {
-        const button = document.getElementById('clearButton');
-        button.disabled = true;
-        button.style.cursor = 'wait';
-        
-        try {
-            clearSelection();
-            updateSelectedItemsList();
-            showToast('Selection cleared', 'info');
-        } finally {
-            button.disabled = false;
-            button.style.cursor = 'pointer';
             updateButtonStates();
-        }
-    });
-
-    // Select All button functionality
-    const selectAllButton = document.getElementById('selectAllButton');
-    const clearSelectionButton = document.getElementById('clearSelection');
-
-    function toggleAllItems(select) {
-        const activeTabId = document.querySelector('.tab-content.active').id;
-        const items = activeTabId === 'productsTab' ? products : collections;
-        const selectedSet = activeTabId === 'productsTab' ? selectedProducts : selectedCollections;
-        const itemType = activeTabId === 'productsTab' ? 'product' : 'collection';
-
-        // Clear or fill the selected set
-        selectedSet.clear();
-        if (select) {
-            items.forEach(item => selectedSet.add(item.id));
-        }
-
-        // Update all select buttons
-        const itemCards = document.querySelectorAll(`#${activeTabId} .item-row`);
-        itemCards.forEach(card => {
-            const selectButton = card.querySelector('.select-button');
-            const icon = selectButton?.querySelector('.material-icons');
-            if (icon) {
-                icon.textContent = select ? 'check' : 'add';
-            }
+            updatePagination();
+            clearTerminal();
         });
-
-        // Update UI
-        updateSelectedCount();
-        updateSelectedItemsList();
-        updateButtonStates();
     }
 
-    selectAllButton.addEventListener('click', () => {
-        const activeTabId = document.querySelector('.tab-content.active').id;
-        const selectedSet = activeTabId === 'productsTab' ? selectedProducts : selectedCollections;
-        const items = activeTabId === 'productsTab' ? products : collections;
+    if (selectAllButton) {
+        selectAllButton.addEventListener('click', () => {
+            const productsGrid = document.getElementById('productsGrid');
+            if (!productsGrid) return;
+            
+            const allCheckboxes = productsGrid.querySelectorAll('input[type="checkbox"]');
+            const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
+            
+            allCheckboxes.forEach(checkbox => {
+                checkbox.checked = !allChecked;
+                const productId = checkbox.getAttribute('data-product-id');
+                if (productId) {
+                    if (!allChecked) {
+                        selectedProducts.add(productId);
+                    } else {
+                        selectedProducts.delete(productId);
+                    }
+                }
+            });
+            
+            updateButtonStates();
+            updateSelectedCount();
+        });
+    }
+
+    // Initialize pagination buttons
+    const prevPageBtn = document.getElementById('prevPage');
+    const nextPageBtn = document.getElementById('nextPage');
+
+    if (prevPageBtn) {
+        prevPageBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                filterProducts();
+            }
+        });
+    }
+
+    if (nextPageBtn) {
+        nextPageBtn.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                filterProducts();
+            }
+        });
+    }
+
+    // Initialize terminal clear button
+    const clearTerminalBtn = document.getElementById('clearTerminal');
+    if (clearTerminalBtn) {
+        clearTerminalBtn.addEventListener('click', clearTerminal);
+    }
+
+    // Initialize other UI components
+    updateButtonStates();
+    updatePagination();
+});
+
+// Export Modal Functions
+function setupExportModal() {
+    const modal = document.getElementById('exportModal');
+    const closeBtn = modal.querySelector('.close-button');
+    const confirmBtn = document.getElementById('confirmExport');
+    const exportFormatSelect = document.getElementById('exportFormat');
+    const exportFieldsContainer = document.getElementById('exportFields');
+
+    // Close modal when clicking close button
+    closeBtn.onclick = () => {
+        modal.style.display = 'none';
+    };
+
+    // Close modal when clicking outside
+    window.onclick = (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    };
+
+    // Populate export fields based on active tab
+    function updateExportFields() {
+        exportFieldsContainer.innerHTML = '';
+        const fields = activeTab === 'productsTab' ? 
+            [
+                { id: 'title', label: 'Title', checked: true },
+                { id: 'sku', label: 'SKU', checked: true },
+                { id: 'price', label: 'Price', checked: true },
+                { id: 'stock_status', label: 'Stock Status', checked: true },
+                { id: 'description', label: 'Description', checked: false },
+                { id: 'images', label: 'Images', checked: false }
+            ] :
+            [
+                { id: 'name', label: 'Name', checked: true },
+                { id: 'slug', label: 'Slug', checked: true },
+                { id: 'description', label: 'Description', checked: false },
+                { id: 'count', label: 'Product Count', checked: true }
+            ];
+
+        fields.forEach(field => {
+            const container = document.createElement('div');
+            container.className = 'checkbox-container';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `field_${field.id}`;
+            checkbox.checked = field.checked;
+            checkbox.value = field.id;
+            
+            const label = document.createElement('label');
+            label.htmlFor = `field_${field.id}`;
+            label.textContent = field.label;
+            
+            container.appendChild(checkbox);
+            container.appendChild(label);
+            exportFieldsContainer.appendChild(container);
+        });
+    }
+
+    // Handle export confirmation
+    confirmBtn.onclick = async () => {
+        const format = exportFormatSelect.value;
+        const selectedFields = Array.from(exportFieldsContainer.querySelectorAll('input[type="checkbox"]:checked'))
+            .map(cb => cb.value);
         
-        // Check if all items are currently selected
-        const allSelected = items.length > 0 && items.every(item => selectedSet.has(item.id));
-        toggleAllItems(!allSelected);
+        if (selectedFields.length === 0) {
+            showToast('Please select at least one field to export', true);
+            return;
+        }
+
+        const selectedItems = getSelectedItems();
+        if (selectedItems.length === 0) {
+            showToast('Please select items to export', true);
+            return;
+        }
+
+        try {
+            await exportData(selectedItems, format, selectedFields);
+            modal.style.display = 'none';
+            showToast('Export completed successfully');
+        } catch (error) {
+            showToast('Export failed: ' + error.message, true);
+        }
+    };
+
+    // Update fields when tab changes
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setTimeout(updateExportFields, 0);
+        });
     });
 
-    clearSelectionButton.addEventListener('click', () => {
-        toggleAllItems(false);
-    });
+    // Initial fields setup
+    updateExportFields();
+}
+
+// Export button click handler
+document.getElementById('exportBtn')?.addEventListener('click', () => {
+    const modal = document.getElementById('exportModal');
+    modal.style.display = 'block';
 });
+
+// Get selected items based on active tab
+function getSelectedItems() {
+    if (activeTab === 'productsTab') {
+        return products.filter(product => selectedProducts.has(product.id));
+    } else {
+        // For collections tab, return all products from selected collections
+        const selectedItems = [];
+        collections.forEach(collection => {
+            if (selectedCollections.has(collection.id)) {
+                selectedItems.push(...collection.products);
+            }
+        });
+        return selectedItems;
+    }
+}
+
+async function exportData(items, format, fields) {
+    if (!items || items.length === 0) {
+        throw new Error('No items selected for export');
+    }
+
+    // Filter item data based on selected fields
+    const filteredItems = items.map(item => {
+        const filteredItem = {};
+        fields.forEach(field => {
+            if (item.hasOwnProperty(field)) {
+                let value = item[field];
+                
+                // Handle special cases
+                if (field === 'images' && Array.isArray(value)) {
+                    value = value.join(';');
+                } else if (field === 'categories' && Array.isArray(value)) {
+                    value = value.join(';');
+                } else if (field === 'price' || field === 'regular_price' || field === 'sale_price') {
+                    value = formatPrice(value);
+                }
+                
+                filteredItem[field] = value;
+            }
+        });
+        return filteredItem;
+    });
+
+    let content;
+    let mimeType;
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const itemType = activeTab === 'productsTab' ? 'products' : 'collections';
+    const filename = `${itemType}_export_${timestamp}`;
+
+    switch (format.toLowerCase()) {
+        case 'csv':
+            content = convertToCSV(filteredItems, fields);
+            mimeType = 'text/csv';
+            break;
+        case 'json':
+            content = JSON.stringify(filteredItems, null, 2);
+            mimeType = 'application/json';
+            break;
+        case 'excel':
+            content = convertToCSV(filteredItems, fields);
+            mimeType = 'text/csv';
+            break;
+        default:
+            throw new Error('Unsupported export format');
+    }
+
+    // Create blob and download
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function convertToCSV(items, fields) {
+    if (!items || items.length === 0) return '';
+
+    const headers = fields.join(',');
+    const rows = items.map(item => {
+        return fields.map(field => {
+            let value = item[field];
+            
+            // Handle different value types
+            if (value === null || value === undefined) {
+                return '';
+            } else if (typeof value === 'object') {
+                value = JSON.stringify(value);
+            }
+            
+            value = String(value);
+            // Escape quotes and special characters
+            value = value.replace(/"/g, '""');
+            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                value = `"${value}"`;
+            }
+            return value;
+        }).join(',');
+    });
+
+    return [headers, ...rows].join('\n');
+}
+
+/**
+ * Updates the UI to reflect the current state
+ */
+function updateUI() {
+    // Update the display based on active tab
+    const activeTab = document.querySelector('.tab-content.active');
+    if (activeTab) {
+        if (activeTab.id === 'productsContent') {
+            // Update product cards
+            const productCards = document.querySelectorAll('.product-card');
+            productCards.forEach(card => {
+                const productId = parseInt(card.dataset.id);
+                card.classList.toggle('selected', selectedProducts.has(productId));
+            });
+        } else if (activeTab.id === 'collectionsContent') {
+            // Update collection cards
+            const collectionCards = document.querySelectorAll('.collection-card');
+            collectionCards.forEach(card => {
+                const collectionId = parseInt(card.dataset.id);
+                card.classList.toggle('selected', selectedCollections.has(collectionId));
+            });
+        }
+    }
+
+    // Update selection count and button states
+    updateSelectedCount();
+    updateButtonStates();
+}
+
+function updateButtonStates() {
+    const exportButton = document.getElementById('exportSelected');
+    const clearButton = document.getElementById('clearButton');
+    const selectAllBtn = document.getElementById('selectAll');
+    const invertSelectionBtn = document.getElementById('invertSelection');
+    
+    // Get counts based on active tab
+    const activeTab = document.querySelector('.tab-content.active');
+    let selectedCount = 0;
+    let totalCount = 0;
+    
+    if (activeTab) {
+        if (activeTab.id === 'productsContent') {
+            selectedCount = selectedProducts.size;
+            totalCount = products.length;
+        } else if (activeTab.id === 'collectionsContent') {
+            selectedCount = selectedCollections.size;
+            totalCount = collections.length;
+        }
+    }
+
+    // Update button states
+    if (exportButton) {
+        const hasSelection = selectedProducts.size > 0 || selectedCollections.size > 0;
+        exportButton.disabled = !hasSelection;
+    }
+
+    if (clearButton) {
+        clearButton.disabled = totalCount === 0;
+    }
+
+    if (selectAllBtn) {
+        selectAllBtn.disabled = totalCount === 0;
+    }
+
+    if (invertSelectionBtn) {
+        invertSelectionBtn.disabled = totalCount === 0;
+    }
+}
+
+function clearSelection() {
+    selectedProducts.clear();
+    selectedCollections.clear();
+    updateUI();
+}
+
+/**
+ * Refreshes card selections in the UI
+ */
+function refreshCardSelections() {
+    const cards = document.querySelectorAll('.product-card, .collection-card');
+    const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
+
+    cards.forEach(card => {
+        const id = card.dataset.id;
+        if (selectedSet.has(id)) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
+        }
+    });
+}
 
 /**
  * Sets the loading state of the UI
@@ -1034,15 +1332,15 @@ function setLoading(loading) {
 function initializeButtons() {
     const scrapeButton = document.getElementById('scrapeButton');
     const clearButton = document.getElementById('clearButton');
-    const scrapeType = document.getElementById('scrapeType');
     
-    if (scrapeButton && scrapeType) {
+    if (scrapeButton) {
         scrapeButton.addEventListener('click', async () => {
             if (isLoading) return;
             
             try {
                 setLoading(true);
-                const type = scrapeType.value;
+                // Use the active tab to determine what to scrape
+                const type = activeTab === 'productsTab' ? 'products' : 'collections';
                 
                 if (type === 'products') {
                     await scrapeProducts();
@@ -1061,72 +1359,258 @@ function initializeButtons() {
     }
 
     if (clearButton) {
-        clearButton.addEventListener('click', clearSelection);
+        clearButton.addEventListener('click', () => {
+            products = [];
+            selectedProducts.clear();
+            currentPage = 1;
+            totalPages = 1;
+            const productsGrid = document.getElementById('productsGrid');
+            if (productsGrid) {
+                productsGrid.innerHTML = '';
+            }
+            updateButtonStates();
+            updatePagination();
+            clearTerminal();
+        });
     }
 
     // Set initial button states
     updateButtonStates();
 }
 
-function updateButtonStates() {
-    const exportButton = document.getElementById('exportSelected');
-    const clearButton = document.getElementById('clearButton');
-    const hasSelectedItems = selectedProducts.size > 0 || selectedCollections.size > 0;
-
-    if (exportButton) {
-        exportButton.disabled = !hasSelectedItems;
-    }
-
-    if (clearButton) {
-        clearButton.disabled = !hasSelectedItems;
-    }
-}
-
-/**
- * Clears all selections
- */
-function clearSelection() {
-    selectedProducts.clear();
-    selectedCollections.clear();
-    updateSelectedCount();
-    
-    // Remove selected class from all items
-    document.querySelectorAll('.item.selected').forEach(item => {
-        item.classList.remove('selected');
-    });
-}
-
-/**
- * Shows an error message to the user
- * @param {string} message - The error message to display
- */
-function showError(message) {
-    // Implement error display logic here
-    console.error(message);
-}
-
 // Initialize everything when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     initializeButtons();
+    setupTabs();
+    setupExportModal();
+    setupSelectionHandlers();
 });
 
-/**
- * Updates the UI to reflect the current state
- */
-function updateUI() {
-    const startButton = document.getElementById('startScraping');
-    if (startButton) {
-        startButton.disabled = selectedCollections.size === 0 && selectedProducts.size === 0;
+function setupExportModal() {
+    const modal = document.getElementById('exportModal');
+    const closeBtn = modal.querySelector('.close-button');
+    const exportBtn = document.getElementById('confirmExport');
+    const exportSelectedBtn = document.getElementById('exportSelected');
+
+    // Setup export selected button
+    if (exportSelectedBtn) {
+        exportSelectedBtn.addEventListener('click', () => {
+            const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
+            if (selectedSet.size === 0) {
+                log('Please select items to export', 'warning', 'warning');
+                return;
+            }
+            modal.style.display = 'block';
+            updateExportFields();
+        });
+    }
+
+    // Setup close button
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    }
+
+    // Close modal when clicking outside
+    window.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // Setup export confirmation button
+    if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+            const format = document.getElementById('exportFormat').value;
+            const fields = Array.from(document.querySelectorAll('#exportFields input:checked'))
+                .map(input => input.value);
+
+            if (fields.length === 0) {
+                log('Please select at least one field to export', 'warning', 'warning');
+                return;
+            }
+
+            exportItems(format, fields);
+            modal.style.display = 'none';
+        });
     }
 }
 
-/**
- * Shows or hides the loading indicator
- * @param {boolean} show - Whether to show or hide the loading indicator
- */
-function showLoading(show) {
-    if (show) {
-        log('Loading...', 'info', 'hourglass_empty');
+function exportItems(format, fields) {
+    try {
+        const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
+        const items = activeTab === 'productsTab' ? products : collections;
+        
+        if (selectedSet.size === 0) {
+            log('No items selected for export', 'warning', 'warning');
+            return;
+        }
+
+        // Get selected items
+        const selectedItems = items.filter(item => selectedSet.has(item.id));
+        
+        // Filter fields
+        const exportData = selectedItems.map(item => {
+            const filteredItem = {};
+            fields.forEach(field => {
+                if (field in item) {
+                    filteredItem[field] = item[field];
+                }
+            });
+            return filteredItem;
+        });
+
+        let content;
+        let mimeType;
+
+        const timestamp = new Date().toISOString().slice(0, 10);
+        const itemType = activeTab === 'productsTab' ? 'products' : 'collections';
+        const filename = `${itemType}_export_${timestamp}`;
+
+        switch (format.toLowerCase()) {
+            case 'csv':
+                content = convertToCSV(exportData);
+                mimeType = 'text/csv';
+                break;
+            case 'json':
+                content = JSON.stringify(exportData, null, 2);
+                mimeType = 'application/json';
+                break;
+            case 'excel':
+                content = convertToCSV(exportData);
+                mimeType = 'text/csv';
+                break;
+            default:
+                throw new Error('Unsupported export format');
+        }
+
+        // Create and trigger download
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        log(`Successfully exported ${selectedSet.size} ${itemType}`, 'success', 'download');
+    } catch (error) {
+        log(`Export failed: ${error.message}`, 'error', 'error');
+        console.error('Export error:', error);
+    }
+}
+
+function convertToCSV(items) {
+    if (!items || items.length === 0) return '';
+
+    const headers = Object.keys(items[0]);
+    const rows = items.map(item => {
+        return headers.map(header => {
+            let value = item[header];
+            
+            // Handle different value types
+            if (value === null || value === undefined) {
+                return '';
+            } else if (typeof value === 'object') {
+                value = JSON.stringify(value);
+            }
+            
+            value = String(value);
+            // Escape quotes and special characters
+            value = value.replace(/"/g, '""');
+            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                value = `"${value}"`;
+            }
+            return value;
+        }).join(',');
+    });
+
+    return [headers.join(','), ...rows].join('\n');
+}
+
+function updateExportFields() {
+    const fieldsContainer = document.getElementById('exportFields');
+    if (!fieldsContainer) return;
+
+    const items = activeTab === 'productsTab' ? products : collections;
+    const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
+
+    if (selectedSet.size === 0 || items.length === 0) {
+        fieldsContainer.innerHTML = '<p>No items selected</p>';
+        return;
+    }
+
+    // Get the first selected item to determine available fields
+    const firstItem = items.find(item => selectedSet.has(item.id));
+    if (!firstItem) return;
+
+    const fields = Object.keys(firstItem);
+    const commonFields = ['id', 'name', 'price', 'description'];
+
+    fieldsContainer.innerHTML = fields.map(field => `
+        <label class="field-option">
+            <input type="checkbox" value="${field}" ${commonFields.includes(field) ? 'checked' : ''}>
+            ${field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')}
+        </label>
+    `).join('');
+}
+
+// Initialize export functionality
+document.addEventListener('DOMContentLoaded', () => {
+    setupExportModal();
+});
+
+function setupSelectionHandlers() {
+    const selectAllBtn = document.getElementById('selectAll');
+    const invertSelectionBtn = document.getElementById('invertSelection');
+
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', () => {
+            const items = activeTab === 'productsTab' ? products : collections;
+            const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
+
+            // Toggle selection
+            if (selectedSet.size === items.length) {
+                selectedSet.clear();
+                log('Cleared all selections', 'info', 'deselect');
+            } else {
+                selectedSet.clear(); // Clear first to ensure clean state
+                items.forEach(item => selectedSet.add(item.id));
+                log(`Selected all items (${items.length})`, 'success', 'select_all');
+            }
+
+            // Update UI
+            updateSelectedItemsList();
+            updateSelectedCount();
+            updateButtonStates();
+            refreshCardSelections();
+        });
+    }
+
+    if (invertSelectionBtn) {
+        invertSelectionBtn.addEventListener('click', () => {
+            const items = activeTab === 'productsTab' ? products : collections;
+            const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
+
+            items.forEach(item => {
+                if (selectedSet.has(item.id)) {
+                    selectedSet.delete(item.id);
+                } else {
+                    selectedSet.add(item.id);
+                }
+            });
+
+            // Update UI
+            updateSelectedItemsList();
+            updateSelectedCount();
+            updateButtonStates();
+            refreshCardSelections();
+            log('Inverted selection', 'info', 'swap_horiz');
+        });
     }
 }
 
@@ -1164,7 +1648,7 @@ function updateSelectedItemsList() {
         countElement.textContent = count;
     }
 
-    // Enable/disable export button
+    // Update export button state
     const exportButton = document.getElementById('exportSelected');
     if (exportButton) {
         exportButton.disabled = count === 0;
@@ -1180,6 +1664,13 @@ function updateSelectedItemsList() {
 function createSelectedItemElement(item, type) {
     const div = document.createElement('div');
     div.className = 'selected-item';
+    div.dataset.id = item.id;
+
+    const isSelected = type === 'collection' ? selectedCollections.has(item.id) : selectedProducts.has(item.id);
+    if (isSelected) {
+        div.classList.add('selected');
+    }
+
     div.innerHTML = `
         <div class="selected-item-info">
             <span class="selected-item-type">${type}</span>
@@ -1205,144 +1696,6 @@ function createSelectedItemElement(item, type) {
 
     return div;
 }
-
-/**
- * Exports selected items based on export options
- * @param {Object} options - Export options for fields to include
- */
-function exportSelectedItems() {
-    try {
-        log('Preparing data for export...', 'info', 'file_download');
-        const results = [];
-
-        // Get export options from checkboxes
-        const options = {
-            name: document.getElementById('exportName')?.checked ?? true,
-            price: document.getElementById('exportPrice')?.checked ?? true,
-            description: document.getElementById('exportDescription')?.checked ?? true,
-            sku: document.getElementById('exportSKU')?.checked ?? true,
-            stock: document.getElementById('exportStock')?.checked ?? true,
-            images: document.getElementById('exportImages')?.checked ?? true
-        };
-
-        // Process selected collections
-        for (const id of selectedCollections) {
-            const collection = collections.find(c => c.id === id);
-            if (collection) {
-                const item = {
-                    type: 'collection',
-                    id: collection.id
-                };
-
-                if (options.name) item.name = collection.name || '';
-                if (options.description) item.description = collection.description || '';
-                if (options.images) item.images = collection.images ? collection.images.join(', ') : '';
-                
-                results.push(item);
-            }
-        }
-
-        // Process selected products
-        for (const id of selectedProducts) {
-            const product = products.find(p => p.id === id);
-            if (product) {
-                const item = {
-                    type: 'product',
-                    id: product.id
-                };
-
-                if (options.name) item.name = product.name || '';
-                if (options.price) {
-                    // Extract numeric price and format it properly
-                    const priceText = product.price_html || product.price || '';
-                    // Remove currency symbols and any other non-numeric characters except dots
-                    const numericPrice = priceText.replace(/[^0-9.]/g, '');
-                    // Handle cases where there might be multiple dots
-                    const parts = numericPrice.split('.');
-                    if (parts.length > 1) {
-                        // Keep the first part and the first two digits of decimal part
-                        const wholePart = parts[0];
-                        const decimalPart = parts[1].substring(0, 2);
-                        item.price = `${wholePart}.${decimalPart}`;
-                    } else {
-                        // If no decimal point, assume it's a whole number
-                        item.price = `${numericPrice}.00`;
-                    }
-                }
-                if (options.description) item.description = product.description || '';
-                if (options.sku) item.sku = product.sku || '';
-                if (options.stock) item.stock_status = product.stock_status || '';
-                if (options.images) item.images = product.images ? product.images.join(', ') : '';
-                
-                results.push(item);
-            }
-        }
-
-        if (results.length === 0) {
-            throw new Error('No items selected for export');
-        }
-
-        // Create CSV content
-        const csvContent = convertDataToCSV(results);
-        
-        // Create and download file
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `woo_export_${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        log(`Successfully exported ${results.length} items`, 'success', 'check_circle');
-    } catch (error) {
-        console.error('Export error:', error);
-        log(`Export failed: ${error.message}`, 'error', 'error');
-    }
-}
-
-function convertDataToCSV(data) {
-    if (!data.length) return '';
-
-    // Get all possible headers from the data
-    const headers = Array.from(new Set(
-        data.reduce((acc, item) => [...acc, ...Object.keys(item)], [])
-    ));
-
-    // Create CSV rows
-    const rows = [
-        headers.join(','), // Header row
-        ...data.map(item => 
-            headers.map(header => {
-                const value = item[header] || '';
-                // Escape quotes and wrap in quotes if contains comma or newline
-                const escaped = String(value).replace(/"/g, '""');
-                return /[,\n"]/.test(escaped) ? `"${escaped}"` : escaped;
-            }).join(',')
-        )
-    ];
-
-    return rows.join('\n');
-}
-
-// Initialize export button
-document.addEventListener('DOMContentLoaded', () => {
-    const exportButton = document.getElementById('exportSelected');
-    if (exportButton) {
-        // Remove any existing listeners
-        const newExportButton = exportButton.cloneNode(true);
-        exportButton.parentNode.replaceChild(newExportButton, exportButton);
-        
-        // Add new listener
-        newExportButton.addEventListener('click', () => {
-            if (!newExportButton.disabled) {
-                exportSelectedItems();
-            }
-        });
-    }
-});
 
 /**
  * Updates the count of selected items in the UI
@@ -1438,4 +1791,231 @@ function formatPrice(priceStr) {
     const formatted = numPrice.toFixed(2).replace('.', ',');
     console.log('Final formatted price:', formatted);
     return formatted;
+}
+
+// Add collection scraping and export functionality
+async function scrapeWooCommerceCollections(baseUrl) {
+    const collections = [];
+    let page = 1;
+    let hasMore = true;
+    
+    while (hasMore) {
+        try {
+            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products/categories?per_page=100&page=${page}`);
+            if (!response.ok) throw new Error('Failed to fetch collections');
+            
+            const data = await response.json();
+            if (!data || data.length === 0) {
+                hasMore = false;
+                break;
+            }
+            
+            // For each collection, fetch its products
+            for (const cat of data) {
+                const collectionProducts = await scrapeWooCommerceCollectionProducts(baseUrl, cat.id);
+                collections.push({
+                    id: cat.id.toString(),
+                    name: cat.name,
+                    slug: cat.slug,
+                    description: cat.description,
+                    count: cat.count,
+                    image: cat.image?.src || null,
+                    parent: cat.parent,
+                    products: collectionProducts
+                });
+                
+                log(`Scraped ${collectionProducts.length} products from collection: ${cat.name}`, 'info', 'info');
+            }
+            
+            page++;
+        } catch (error) {
+            log(`Error fetching collections: ${error.message}`, 'error', 'error');
+            hasMore = false;
+        }
+    }
+    
+    return collections;
+}
+
+async function scrapeShopifyCollections(baseUrl) {
+    try {
+        const response = await fetch(`${baseUrl}/collections.json`);
+        if (!response.ok) throw new Error('Failed to fetch Shopify collections');
+        
+        const data = await response.json();
+        const collections = [];
+
+        // For each collection, fetch its products
+        for (const collection of data.collections) {
+            const collectionProducts = await scrapeShopifyCollectionProducts(baseUrl, collection.handle);
+            collections.push({
+                id: collection.id,
+                name: collection.title,
+                description: collection.description,
+                handle: collection.handle,
+                image: collection.image?.src || null,
+                products: collectionProducts
+            });
+
+            // Log progress
+            log(`Scraped ${collectionProducts.length} products from collection: ${collection.title}`, 'info', 'info');
+        }
+
+        return collections;
+    } catch (error) {
+        log(`Error fetching Shopify collections: ${error.message}`, 'error', 'error');
+        return [];
+    }
+}
+
+async function scrapeCollectionProducts(baseUrl, categoryId) {
+    const products = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+        try {
+            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products?category=${categoryId}&per_page=100&page=${page}&status=publish`);
+            if (!response.ok) throw new Error(`Failed to fetch products for category ${categoryId}`);
+
+            const data = await response.json();
+            if (!data || data.length === 0) {
+                hasMore = false;
+                break;
+            }
+
+            products.push(...data.map(product => ({
+                id: product.id.toString(),
+                title: product.name,
+                sku: product.sku,
+                price: product.price,
+                regular_price: product.regular_price,
+                sale_price: product.sale_price,
+                stock_status: product.stock_status,
+                description: product.description,
+                short_description: product.short_description,
+                categories: product.categories.map(cat => cat.name),
+                images: product.images.map(img => img.src),
+                variations: product.variations,
+                attributes: product.attributes,
+                url: product.permalink
+            })));
+
+            page++;
+        } catch (error) {
+            log(`Error fetching products for category ${categoryId}: ${error.message}`, 'error', 'error');
+            hasMore = false;
+        }
+    }
+
+    return products;
+}
+
+async function scrapeShopifyCollectionProducts(baseUrl, handle) {
+    try {
+        const response = await fetch(`${baseUrl}/collections/${handle}/products.json`);
+        if (!response.ok) throw new Error(`Failed to fetch products for collection ${handle}`);
+
+        const data = await response.json();
+        return data.products.map(product => ({
+            id: product.id.toString(),
+            title: product.title,
+            handle: product.handle,
+            description: product.body_html,
+            price: product.variants[0]?.price,
+            compare_at_price: product.variants[0]?.compare_at_price,
+            sku: product.variants[0]?.sku,
+            stock_status: product.variants[0]?.available ? 'instock' : 'outofstock',
+            images: product.images.map(img => img.src),
+            variants: product.variants,
+            options: product.options,
+            url: `${baseUrl}/products/${product.handle}`
+        }));
+    } catch (error) {
+        log(`Error fetching products for collection ${handle}: ${error.message}`, 'error', 'error');
+        return [];
+    }
+}
+
+// Update display functions to show products within collections
+function displayCollections() {
+    const container = document.getElementById('collectionsContent');
+    if (!container) return;
+
+    container.innerHTML = '';
+    if (!collections.length) {
+        container.innerHTML = '<div class="no-items">No collections found</div>';
+        return;
+    }
+
+    collections.forEach(collection => {
+        const card = createCollectionCard(collection);
+        container.appendChild(card);
+    });
+}
+
+function createCollectionCard(collection) {
+    const card = document.createElement('div');
+    card.className = 'collection-card';
+    card.dataset.id = collection.id;
+
+    const selected = selectedCollections.has(collection.id);
+    if (selected) card.classList.add('selected');
+
+    // Create collection header
+    const header = document.createElement('div');
+    header.className = 'collection-header';
+    header.innerHTML = `
+        <h3>${collection.name}</h3>
+        <span class="product-count">${collection.products.length} products</span>
+    `;
+    card.appendChild(header);
+
+    // Create products grid
+    const productsGrid = document.createElement('div');
+    productsGrid.className = 'collection-products';
+    
+    // Add first 4 products as preview
+    collection.products.slice(0, 4).forEach(product => {
+        const productPreview = document.createElement('div');
+        productPreview.className = 'product-preview';
+        productPreview.innerHTML = `
+            <img src="${product.images[0] || 'placeholder.jpg'}" alt="${product.title}">
+            <div class="product-info">
+                <div class="product-title">${product.title}</div>
+                <div class="product-price">${formatPrice(product.price)}</div>
+            </div>
+        `;
+        productsGrid.appendChild(productPreview);
+    });
+
+    if (collection.products.length > 4) {
+        const moreProducts = document.createElement('div');
+        moreProducts.className = 'more-products';
+        moreProducts.textContent = `+${collection.products.length - 4} more`;
+        productsGrid.appendChild(moreProducts);
+    }
+
+    card.appendChild(productsGrid);
+
+    // Add click handler
+    card.addEventListener('click', (e) => {
+        if (e.target.closest('.product-preview')) {
+            // Handle product click
+            return;
+        }
+        
+        const id = collection.id;
+        if (selectedCollections.has(id)) {
+            selectedCollections.delete(id);
+            card.classList.remove('selected');
+        } else {
+            selectedCollections.add(id);
+            card.classList.add('selected');
+        }
+        updateSelectedCount();
+        updateButtonStates();
+    });
+
+    return card;
 }
