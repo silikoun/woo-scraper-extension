@@ -69,13 +69,20 @@ function log(message, type = 'info', icon = '') {
 }
 
 // Clear logs
-document.getElementById('clearLogs')?.addEventListener('click', () => {
+document.getElementById('clearButton')?.addEventListener('click', () => {
     const logContent = document.querySelector('.log-content');
     const logContainer = document.querySelector('.log-container');
     if (logContent) {
         logContent.innerHTML = '';
         logContainer.style.display = 'none';
     }
+    
+    // Also clear products and update display
+    products = [];
+    selectedProducts.clear();
+    displayProducts();
+    updateSelectedCount();
+    updateButtonStates();
 });
 
 /**

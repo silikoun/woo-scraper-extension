@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Woo Scraper</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo-animation">
+                    <span class="material-icons primary">shopping_cart</span>
+                    <span class="material-icons secondary">code</span>
+                </div>
+                <h1>Woo Scraper</h1>
+            </div>
+            <div class="header-actions">
+                <button id="clearLogs" class="btn btn-icon" title="Clear logs">
+                    <span class="material-icons">clear_all</span>
+                </button>
+            </div>
+        </div>
+        <!-- Rest of your existing HTML content -->
+    </div>
+</body>
+</html>
