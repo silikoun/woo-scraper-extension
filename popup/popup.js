@@ -98,7 +98,74 @@ function updatePagination() {
     document.getElementById('nextPage').disabled = currentPage === totalPages;
 }
 
-// Platform Detection
+/**
+ * Updates the state of action buttons based on selections
+ */
+function updateButtonStates() {
+    const exportBtn = document.getElementById('exportBtn');
+    const activeTab = document.querySelector('.tab-btn.active');
+    
+    if (exportBtn) {
+        if (activeTab?.id === 'productsTab') {
+            exportBtn.disabled = selectedProducts.size === 0;
+        } else if (activeTab?.id === 'collectionsTab') {
+            exportBtn.disabled = selectedCollections.size === 0;
+        }
+    }
+}
+
+/**
+ * Updates the selected count display
+ */
+function updateSelectedCount() {
+    const countElement = document.getElementById('selectedCount');
+    if (!countElement) return;
+
+    const activeTab = document.querySelector('.tab-btn.active');
+    const count = activeTab?.id === 'productsTab' ? 
+        selectedProducts.size : 
+        selectedCollections.size;
+
+    countElement.textContent = count;
+}
+
+/**
+ * Initializes all button event listeners
+ */
+function initializeButtons() {
+    // Initialize export button
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+            const modal = document.getElementById('exportModal');
+            if (modal) modal.style.display = 'block';
+        });
+    }
+
+    // Initialize pagination buttons
+    document.getElementById('prevPage')?.addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            filterProducts();
+            updatePagination();
+        }
+    });
+
+    document.getElementById('nextPage')?.addEventListener('click', () => {
+        if (currentPage < totalPages) {
+            currentPage++;
+            filterProducts();
+            updatePagination();
+        }
+    });
+
+    // Initialize filter inputs
+    document.getElementById('searchInput')?.addEventListener('input', filterProducts);
+    document.getElementById('categoryFilter')?.addEventListener('change', filterProducts);
+    document.getElementById('stockFilter')?.addEventListener('change', filterProducts);
+    document.getElementById('sortSelect')?.addEventListener('change', filterProducts);
+}
+
 /**
  * Detects the platform (WooCommerce or Shopify) based on the provided base URL
  * @param {string} baseUrl - The base URL of the platform
@@ -134,7 +201,6 @@ async function detectPlatform(baseUrl) {
     }
 }
 
-// Scraping Functions
 /**
  * Scrapes products from the detected platform
  */
@@ -195,7 +261,7 @@ async function scrapeWooCommerceProducts(baseUrl) {
 
     while (hasMore) {
         try {
-            // Try WooCommerce Store API first (public, no auth needed)
+            // Try WooCommerce Store API first
             const storeUrl = `${baseUrl}/wp-json/wc/store/v1/products?per_page=${perPage}&page=${page}`;
             const response = await fetch(storeUrl, {
                 headers: {
@@ -299,286 +365,124 @@ async function scrapeShopifyProducts(baseUrl) {
 /**
  * Scrapes collections from the detected platform
  */
-async function scrapeCollections() {
-    setLoading(true);
-    collections = [];
-    selectedCollections.clear();
-
+async function scrapeCollectionsWithUI() {
     try {
-        const baseUrl = await getBaseUrl();
-        if (!baseUrl) {
-            throw new Error('Could not determine store URL');
+        setLoading(true);
+        clearTerminal();
+        log('Starting collection scrape...', 'info', 'hourglass_empty');
+
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.url) throw new Error('No active tab found');
+
+        const baseUrl = new URL(tab.url).origin;
+        log(`Target URL: ${baseUrl}`, 'info', 'link');
+
+        // Get the collections from the page content
+        collections = await scrapeWooCommerceCollections(baseUrl);
+        
+        if (!collections || collections.length === 0) {
+            throw new Error('No collections found. Make sure you are on a WooCommerce store page with product categories.');
         }
 
-        if (!detectedPlatform) {
-            await detectPlatform(baseUrl);
+        log(`Successfully scraped ${collections.length} collections`, 'success', 'check_circle');
+        
+        // Switch to collections tab and update UI
+        const collectionsTab = document.getElementById('collectionsTab');
+        const collectionsContent = document.getElementById('collectionsContent');
+        if (collectionsTab && collectionsContent) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            collectionsTab.classList.add('active');
+            collectionsContent.classList.add('active');
         }
 
-        log('Fetching collections...', 'info', 'sync');
-
-        switch (detectedPlatform) {
-            case PLATFORM.WOOCOMMERCE:
-                collections = await scrapeWooCommerceCollections(baseUrl);
-                break;
-            case PLATFORM.SHOPIFY:
-                collections = await scrapeShopifyCollections(baseUrl);
-                break;
-            default:
-                throw new Error('Unsupported platform');
-        }
-
-        log(`Found ${collections.length} collections`, 'success', 'check_circle');
         displayCollections();
+        updateButtonStates();
+        updateSelectedCount();
+
     } catch (error) {
         log(`Error: ${error.message}`, 'error', 'error');
+        console.error('Collection scraping error:', error);
     } finally {
         setLoading(false);
-        updateButtonStates();
     }
 }
 
 /**
- * Scrapes WooCommerce collections
+ * Scrapes WooCommerce collections from the provided base URL
  * @param {string} baseUrl - The base URL of the WooCommerce platform
  * @returns {array} The scraped WooCommerce collections
  */
 async function scrapeWooCommerceCollections(baseUrl) {
-    const collections = [];
-    let page = 1;
-    let hasMore = true;
-    
-    while (hasMore) {
-        try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products/categories?per_page=100&page=${page}`);
-            if (!response.ok) throw new Error('Failed to fetch collections');
-            
-            const data = await response.json();
-            if (!data || data.length === 0) {
-                hasMore = false;
-                break;
-            }
-            
-            // For each collection, fetch its products
-            for (const cat of data) {
-                const collectionProducts = await scrapeWooCommerceCollectionProducts(baseUrl, cat.id);
-                collections.push({
-                    id: cat.id.toString(),
-                    name: cat.name,
-                    slug: cat.slug,
-                    description: cat.description,
-                    count: cat.count,
-                    image: cat.image?.src || null,
-                    parent: cat.parent,
-                    products: collectionProducts
-                });
-                
-                log(`Scraped ${collectionProducts.length} products from collection: ${cat.name}`, 'info', 'info');
-            }
-            
-            page++;
-        } catch (error) {
-            log(`Error fetching collections: ${error.message}`, 'error', 'error');
-            hasMore = false;
-        }
-    }
-    
-    return collections;
-}
-
-async function scrapeWooCommerceCollectionProducts(baseUrl, categoryId) {
-    const products = [];
-    let page = 1;
-    let hasMore = true;
-
-    while (hasMore) {
-        try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products?category=${categoryId}&per_page=100&page=${page}&status=publish`);
-            if (!response.ok) throw new Error(`Failed to fetch products for category ${categoryId}`);
-
-            const data = await response.json();
-            if (!data || data.length === 0) {
-                hasMore = false;
-                break;
-            }
-
-            products.push(...data.map(product => ({
-                id: product.id.toString(),
-                title: product.name,
-                sku: product.sku,
-                price: product.price,
-                regular_price: product.regular_price,
-                sale_price: product.sale_price,
-                stock_status: product.stock_status,
-                description: product.description,
-                short_description: product.short_description,
-                categories: product.categories.map(cat => cat.name),
-                images: product.images.map(img => img.src),
-                variations: product.variations,
-                attributes: product.attributes,
-                url: product.permalink
-            })));
-
-            page++;
-        } catch (error) {
-            log(`Error fetching products for category ${categoryId}: ${error.message}`, 'error', 'error');
-            hasMore = false;
-        }
-    }
-
-    return products;
-}
-
-/**
- * Scrapes Shopify collections
- * @param {string} baseUrl - The base URL of the Shopify platform
- * @returns {array} The scraped Shopify collections
- */
-async function scrapeShopifyCollections(baseUrl) {
     try {
-        const response = await fetch(`${baseUrl}/collections.json`);
-        if (!response.ok) throw new Error('Failed to fetch Shopify collections');
-        
-        const data = await response.json();
-        const collections = [];
+        log(`Fetching collections from ${baseUrl}`, 'info', 'link');
 
-        // For each collection, fetch its products
-        for (const collection of data.collections) {
-            const collectionProducts = await scrapeShopifyCollectionProducts(baseUrl, collection.handle);
-            collections.push({
-                id: collection.id,
-                name: collection.title,
-                description: collection.description,
-                handle: collection.handle,
-                image: collection.image?.src || null,
-                products: collectionProducts
+        // Try WooCommerce REST API v3 first
+        try {
+            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products/categories?per_page=100`, {
+                headers: {
+                    'Accept': 'application/json'
+                }
             });
-
-            // Log progress
-            log(`Scraped ${collectionProducts.length} products from collection: ${collection.title}`, 'info', 'info');
+            if (response.ok) {
+                const data = await response.json();
+                return data.map(category => ({
+                    id: category.id,
+                    name: category.name,
+                    count: category.count || 0,
+                    description: category.description || '',
+                    slug: category.slug || '',
+                    parent: category.parent || 0
+                }));
+            }
+        } catch (error) {
+            log('WC REST API v3 not available, trying Store API...', 'info', 'sync');
         }
 
-        return collections;
+        // Try WooCommerce Store API
+        try {
+            const response = await fetch(`${baseUrl}/wp-json/wc/store/v1/products/categories?per_page=100`, {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                return data.map(category => ({
+                    id: category.id,
+                    name: category.name,
+                    count: category.count || 0,
+                    description: category.description || '',
+                    slug: category.slug || '',
+                    parent: category.parent || 0
+                }));
+            }
+        } catch (error) {
+            log('WC Store API not available, trying WordPress API...', 'info', 'sync');
+        }
+
+        // Try WordPress REST API as last resort
+        const response = await fetch(`${baseUrl}/wp-json/wp/v2/product_cat?per_page=100`, {
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            return data.map(category => ({
+                id: category.id,
+                name: category.name || '',
+                count: category.count || 0,
+                description: category.description || '',
+                slug: category.slug || '',
+                parent: category.parent || 0
+            }));
+        }
+
+        throw new Error('No compatible API endpoints found');
     } catch (error) {
-        log(`Error fetching Shopify collections: ${error.message}`, 'error', 'error');
-        return [];
+        throw new Error(`Failed to fetch collections: ${error.message}`);
     }
-}
-
-async function scrapeShopifyCollectionProducts(baseUrl, handle) {
-    try {
-        const response = await fetch(`${baseUrl}/collections/${handle}/products.json`);
-        if (!response.ok) throw new Error(`Failed to fetch products for collection ${handle}`);
-
-        const data = await response.json();
-        return data.products.map(product => ({
-            id: product.id.toString(),
-            title: product.title,
-            handle: product.handle,
-            description: product.body_html,
-            price: product.variants[0]?.price,
-            compare_at_price: product.variants[0]?.compare_at_price,
-            sku: product.variants[0]?.sku,
-            stock_status: product.variants[0]?.available ? 'instock' : 'outofstock',
-            images: product.images.map(img => img.src),
-            variants: product.variants,
-            options: product.options,
-            url: `${baseUrl}/products/${product.handle}`
-        }));
-    } catch (error) {
-        log(`Error fetching products for collection ${handle}: ${error.message}`, 'error', 'error');
-        return [];
-    }
-}
-
-// Display Functions
-/**
- * Displays the scraped collections in the UI
- */
-function displayCollections() {
-    const container = document.getElementById('collectionsContent');
-    if (!container) return;
-
-    container.innerHTML = '';
-    if (!collections.length) {
-        container.innerHTML = '<div class="no-items">No collections found</div>';
-        return;
-    }
-
-    collections.forEach(collection => {
-        const card = createCollectionCard(collection);
-        container.appendChild(card);
-    });
-}
-
-/**
- * Creates a collection card element
- * @param {object} collection - The collection data
- * @returns {HTMLElement} The collection card element
- */
-function createCollectionCard(collection) {
-    const card = document.createElement('div');
-    card.className = 'collection-card';
-    card.dataset.id = collection.id;
-
-    const selected = selectedCollections.has(collection.id);
-    if (selected) card.classList.add('selected');
-
-    // Create collection header
-    const header = document.createElement('div');
-    header.className = 'collection-header';
-    header.innerHTML = `
-        <h3>${collection.name}</h3>
-        <span class="product-count">${collection.products.length} products</span>
-    `;
-    card.appendChild(header);
-
-    // Create products grid
-    const productsGrid = document.createElement('div');
-    productsGrid.className = 'collection-products';
-    
-    // Add first 4 products as preview
-    collection.products.slice(0, 4).forEach(product => {
-        const productPreview = document.createElement('div');
-        productPreview.className = 'product-preview';
-        productPreview.innerHTML = `
-            <img src="${product.images[0] || 'placeholder.jpg'}" alt="${product.title}">
-            <div class="product-info">
-                <div class="product-title">${product.title}</div>
-                <div class="product-price">${formatPrice(product.price)}</div>
-            </div>
-        `;
-        productsGrid.appendChild(productPreview);
-    });
-
-    if (collection.products.length > 4) {
-        const moreProducts = document.createElement('div');
-        moreProducts.className = 'more-products';
-        moreProducts.textContent = `+${collection.products.length - 4} more`;
-        productsGrid.appendChild(moreProducts);
-    }
-
-    card.appendChild(productsGrid);
-
-    // Add click handler
-    card.addEventListener('click', (e) => {
-        if (e.target.closest('.product-preview')) {
-            // Handle product click
-            return;
-        }
-        
-        const id = collection.id;
-        if (selectedCollections.has(id)) {
-            selectedCollections.delete(id);
-            card.classList.remove('selected');
-        } else {
-            selectedCollections.add(id);
-            card.classList.add('selected');
-        }
-        updateSelectedCount();
-        updateButtonStates();
-    });
-
-    return card;
 }
 
 /**
@@ -625,81 +529,233 @@ function displayProducts() {
  * @returns {HTMLElement} The product card element
  */
 function createProductCard(product) {
-    console.log('Creating card for product:', product.id);
-    
     const card = document.createElement('div');
     card.className = 'product-card';
     card.dataset.id = product.id;
 
-    // Create checkbox for selection
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.className = 'product-checkbox';
-    checkbox.checked = selectedProducts.has(product.id);
-    checkbox.addEventListener('change', () => {
-        if (checkbox.checked) {
-            selectedProducts.add(product.id);
-            log(`Selected product: ${product.name}`, 'info', 'check_circle');
-        } else {
-            selectedProducts.delete(product.id);
-            log(`Deselected product: ${product.name}`, 'info', 'remove_circle');
-        }
-        updateSelectedCount();
-        updateButtonStates();
-    });
+    checkbox.className = 'card-checkbox';
+    checkbox.dataset.id = product.id;
+    checkbox.dataset.type = 'product';
 
-    // Create main content container
-    const content = document.createElement('div');
-    content.className = 'product-content';
+    // Image section
+    const img = document.createElement('img');
+    img.className = 'product-image';
+    img.src = product.images?.[0] || 'placeholder.png';
+    img.alt = product.name;
+    img.onerror = function() {
+        this.src = 'placeholder.png';
+    };
 
-    // Add product image if available
-    if (product.images && product.images.length > 0) {
-        const imageContainer = document.createElement('div');
-        imageContainer.className = 'product-image-container';
-        
-        const img = document.createElement('img');
-        img.src = product.images[0];
-        img.alt = product.name;
-        img.className = 'product-image';
-        img.addEventListener('error', () => {
-            img.src = 'placeholder.png'; // Add a placeholder image
-            img.alt = 'Image not available';
-        });
-        
-        imageContainer.appendChild(img);
-        content.appendChild(imageContainer);
+    // Info section
+    const info = document.createElement('div');
+    info.className = 'product-info';
+
+    const title = document.createElement('h3');
+    title.className = 'product-title';
+    title.textContent = product.name;
+
+    const price = document.createElement('div');
+    price.className = 'product-price';
+    price.textContent = formatPrice(product.price);
+
+    const stock = document.createElement('div');
+    stock.className = `product-stock ${product.inStock ? 'in-stock' : 'out-of-stock'}`;
+    stock.innerHTML = `
+        <span class="material-icons">${product.inStock ? 'check_circle' : 'cancel'}</span>
+        ${product.inStock ? 'In Stock' : 'Out of Stock'}
+    `;
+
+    // Footer section
+    const footer = document.createElement('div');
+    footer.className = 'card-footer';
+
+    const sku = document.createElement('div');
+    sku.className = 'product-sku';
+    sku.textContent = product.sku || 'No SKU';
+
+    footer.appendChild(sku);
+
+    // Assemble card
+    info.appendChild(title);
+    info.appendChild(price);
+    info.appendChild(stock);
+
+    card.appendChild(checkbox);
+    card.appendChild(img);
+    card.appendChild(info);
+    card.appendChild(footer);
+
+    return card;
+}
+
+/**
+ * Formats a price value with currency symbol
+ * @param {number|string} price - The price to format
+ * @param {string} currency - The currency symbol (default: $)
+ * @returns {string} The formatted price
+ */
+function formatPrice(price, currency = '$') {
+    if (!price) return 'N/A';
+    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+    return `${currency}${numPrice.toFixed(2)}`;
+}
+
+/**
+ * Displays the scraped collections in the UI
+ */
+function displayCollections() {
+    const container = document.getElementById('collectionsContent');
+    if (!container) return;
+
+    // Clear existing content
+    container.innerHTML = '';
+
+    if (!collections.length) {
+        container.innerHTML = '<div class="empty-state">No collections found. Try scraping first.</div>';
+        return;
     }
 
-    // Add product details
-    const details = document.createElement('div');
-    details.className = 'product-details';
+    // Create collections grid
+    const grid = document.createElement('div');
+    grid.className = 'grid';
 
-    const name = document.createElement('h3');
-    name.className = 'product-name';
-    name.textContent = product.name || 'Unnamed Product';
+    collections.forEach(collection => {
+        const card = createCollectionCard(collection);
+        grid.appendChild(card);
+    });
 
-    const price = document.createElement('p');
-    price.className = 'product-price';
-    const formattedPrice = formatPrice(product.price_html || product.price);
-    price.textContent = formattedPrice || 'Price not available';
+    container.appendChild(grid);
+    updateSelectedCount();
+}
+
+/**
+ * Creates a collection card element for the provided collection
+ * @param {object} collection - The collection data
+ * @returns {HTMLElement} The collection card element
+ */
+function createCollectionCard(collection) {
+    const card = document.createElement('div');
+    card.className = 'collection-card';
+    card.dataset.id = collection.id;
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'card-checkbox';
+    checkbox.dataset.id = collection.id;
+    checkbox.dataset.type = 'collection';
+
+    const info = document.createElement('div');
+    info.className = 'collection-info';
+
+    const title = document.createElement('h3');
+    title.className = 'collection-title';
+    title.textContent = collection.name;
+
+    const count = document.createElement('div');
+    count.className = 'collection-count';
+    count.innerHTML = `
+        <span class="material-icons">inventory_2</span>
+        ${collection.count} products
+    `;
 
     const description = document.createElement('p');
-    description.className = 'product-description';
-    description.textContent = product.short_description || product.description || 'No description available';
+    description.className = 'collection-description';
+    description.textContent = collection.description || 'No description available';
 
-    details.appendChild(name);
-    details.appendChild(price);
-    details.appendChild(description);
-    content.appendChild(details);
+    const footer = document.createElement('div');
+    footer.className = 'card-footer';
 
-    // Add checkbox and content to card
+    const slug = document.createElement('div');
+    slug.className = 'collection-slug';
+    slug.textContent = collection.slug;
+
+    footer.appendChild(slug);
+
+    info.appendChild(title);
+    info.appendChild(count);
+    if (collection.description) {
+        info.appendChild(description);
+    }
+
     card.appendChild(checkbox);
+    card.appendChild(info);
+    card.appendChild(footer);
+
+    return card;
+}
+
+/**
+ * Creates a loading skeleton card
+ * @returns {HTMLElement} The skeleton card element
+ */
+function createSkeletonCard() {
+    const card = document.createElement('div');
+    card.className = 'skeleton-card loading-skeleton';
+
+    const image = document.createElement('div');
+    image.className = 'skeleton-image loading-skeleton';
+
+    const content = document.createElement('div');
+    content.className = 'skeleton-content';
+
+    const title = document.createElement('div');
+    title.className = 'skeleton-title loading-skeleton';
+
+    const price = document.createElement('div');
+    price.className = 'skeleton-price loading-skeleton';
+
+    content.appendChild(title);
+    content.appendChild(price);
+
+    card.appendChild(image);
     card.appendChild(content);
 
     return card;
 }
 
-// Filter Functions
+/**
+ * Shows loading state in the grid
+ * @param {string} containerId - The ID of the container element
+ * @param {number} count - Number of skeleton cards to show
+ */
+function showLoadingState(containerId, count = 6) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const loadingGrid = document.createElement('div');
+    loadingGrid.className = 'grid-loading';
+
+    for (let i = 0; i < count; i++) {
+        loadingGrid.appendChild(createSkeletonCard());
+    }
+
+    container.innerHTML = '';
+    container.appendChild(loadingGrid);
+}
+
+/**
+ * Displays the empty state message
+ * @param {string} containerId - The ID of the container element
+ * @param {string} message - The message to display
+ * @param {string} icon - The material icon name
+ */
+function showEmptyState(containerId, message, icon = 'inventory') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-message';
+    emptyState.innerHTML = `
+        <span class="material-icons">${icon}</span>
+        <p>${message}</p>
+    `;
+
+    container.innerHTML = '';
+    container.appendChild(emptyState);
+}
+
 /**
  * Filters products based on search term, category, and stock status
  */
@@ -831,7 +887,6 @@ function sortProducts(products, sortBy) {
     });
 }
 
-// Tab Functions
 /**
  * Sets up event listeners for tab buttons
  */
@@ -876,147 +931,22 @@ function switchTab(tabId) {
     });
 }
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    // Initialize UI elements
-    const searchInput = document.getElementById('searchInput');
-    const searchBy = document.getElementById('searchBy');
-    const stockSelect = document.getElementById('stockStatus');
-    const priceRange = document.getElementById('priceRange');
-    const sortSelect = document.getElementById('sortBy');
-    const scrapeButton = document.getElementById('scrapeButton');
-    const clearButton = document.getElementById('clearButton');
-    const selectAllButton = document.getElementById('selectAll');
-
-    // Set up filter event listeners
-    if (searchInput) {
-        searchInput.addEventListener('input', filterProducts);
-    }
-    if (searchBy) {
-        searchBy.addEventListener('change', filterProducts);
-    }
-    if (stockSelect) {
-        stockSelect.addEventListener('change', filterProducts);
-    }
-    if (priceRange) {
-        priceRange.addEventListener('change', filterProducts);
-    }
-    if (sortSelect) {
-        sortSelect.addEventListener('change', filterProducts);
-    }
-
-    // Set up other event listeners
-    if (scrapeButton) {
-        scrapeButton.addEventListener('click', async () => {
-            if (isLoading) return;
-            
-            try {
-                setLoading(true);
-                // Use the active tab to determine what to scrape
-                const type = activeTab === 'productsTab' ? 'products' : 'collections';
-                
-                if (type === 'products') {
-                    await scrapeProducts();
-                    displayProducts();
-                } else if (type === 'collections') {
-                    await scrapeCollections();
-                    displayCollections();
-                }
-            } catch (error) {
-                console.error('Error scraping:', error);
-                log(`Error: ${error.message}`, 'error', 'error');
-            } finally {
-                setLoading(false);
-            }
-        });
-    }
-
-    if (clearButton) {
-        clearButton.addEventListener('click', () => {
-            products = [];
-            selectedProducts.clear();
-            currentPage = 1;
-            totalPages = 1;
-            const productsGrid = document.getElementById('productsGrid');
-            if (productsGrid) {
-                productsGrid.innerHTML = '';
-            }
-            updateButtonStates();
-            updatePagination();
-            clearTerminal();
-        });
-    }
-
-    if (selectAllButton) {
-        selectAllButton.addEventListener('click', () => {
-            const productsGrid = document.getElementById('productsGrid');
-            if (!productsGrid) return;
-            
-            const allCheckboxes = productsGrid.querySelectorAll('input[type="checkbox"]');
-            const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
-            
-            allCheckboxes.forEach(checkbox => {
-                checkbox.checked = !allChecked;
-                const productId = checkbox.getAttribute('data-product-id');
-                if (productId) {
-                    if (!allChecked) {
-                        selectedProducts.add(productId);
-                    } else {
-                        selectedProducts.delete(productId);
-                    }
-                }
-            });
-            
-            updateButtonStates();
-            updateSelectedCount();
-        });
-    }
-
-    // Initialize pagination buttons
-    const prevPageBtn = document.getElementById('prevPage');
-    const nextPageBtn = document.getElementById('nextPage');
-
-    if (prevPageBtn) {
-        prevPageBtn.addEventListener('click', () => {
-            if (currentPage > 1) {
-                currentPage--;
-                filterProducts();
-            }
-        });
-    }
-
-    if (nextPageBtn) {
-        nextPageBtn.addEventListener('click', () => {
-            if (currentPage < totalPages) {
-                currentPage++;
-                filterProducts();
-            }
-        });
-    }
-
-    // Initialize terminal clear button
-    const clearTerminalBtn = document.getElementById('clearTerminal');
-    if (clearTerminalBtn) {
-        clearTerminalBtn.addEventListener('click', clearTerminal);
-    }
-
-    // Initialize other UI components
-    updateButtonStates();
-    updatePagination();
-});
-
-// Export Modal Functions
+/**
+ * Sets up the export modal functionality
+ */
 function setupExportModal() {
     const modal = document.getElementById('exportModal');
-    const closeBtn = modal.querySelector('.close-button');
+    const closeBtn = modal?.querySelector('.close-button');
     const confirmBtn = document.getElementById('confirmExport');
-    const exportFormatSelect = document.getElementById('exportFormat');
-    const exportFieldsContainer = document.getElementById('exportFields');
+
+    if (!modal) return;
 
     // Close modal when clicking close button
-    closeBtn.onclick = () => {
-        modal.style.display = 'none';
-    };
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+    }
 
     // Close modal when clicking outside
     window.onclick = (event) => {
@@ -1025,286 +955,77 @@ function setupExportModal() {
         }
     };
 
-    // Populate export fields based on active tab
-    function updateExportFields() {
-        exportFieldsContainer.innerHTML = '';
-        const fields = activeTab === 'productsTab' ? 
-            [
-                { id: 'title', label: 'Title', checked: true },
-                { id: 'sku', label: 'SKU', checked: true },
-                { id: 'price', label: 'Price', checked: true },
-                { id: 'stock_status', label: 'Stock Status', checked: true },
-                { id: 'description', label: 'Description', checked: false },
-                { id: 'images', label: 'Images', checked: false }
-            ] :
-            [
-                { id: 'name', label: 'Name', checked: true },
-                { id: 'slug', label: 'Slug', checked: true },
-                { id: 'description', label: 'Description', checked: false },
-                { id: 'count', label: 'Product Count', checked: true }
-            ];
-
-        fields.forEach(field => {
-            const container = document.createElement('div');
-            container.className = 'checkbox-container';
-            
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = `field_${field.id}`;
-            checkbox.checked = field.checked;
-            checkbox.value = field.id;
-            
-            const label = document.createElement('label');
-            label.htmlFor = `field_${field.id}`;
-            label.textContent = field.label;
-            
-            container.appendChild(checkbox);
-            container.appendChild(label);
-            exportFieldsContainer.appendChild(container);
-        });
-    }
-
     // Handle export confirmation
-    confirmBtn.onclick = async () => {
-        const format = exportFormatSelect.value;
-        const selectedFields = Array.from(exportFieldsContainer.querySelectorAll('input[type="checkbox"]:checked'))
-            .map(cb => cb.value);
-        
-        if (selectedFields.length === 0) {
-            showToast('Please select at least one field to export', true);
-            return;
-        }
+    if (confirmBtn) {
+        confirmBtn.onclick = async () => {
+            const activeTab = document.querySelector('.tab-btn.active');
+            const items = activeTab?.id === 'productsTab' ? 
+                Array.from(selectedProducts).map(id => products.find(p => p.id === id)) :
+                Array.from(selectedCollections).map(id => collections.find(c => c.id === id));
 
-        const selectedItems = getSelectedItems();
-        if (selectedItems.length === 0) {
-            showToast('Please select items to export', true);
-            return;
-        }
-
-        try {
-            await exportData(selectedItems, format, selectedFields);
-            modal.style.display = 'none';
-            showToast('Export completed successfully');
-        } catch (error) {
-            showToast('Export failed: ' + error.message, true);
-        }
-    };
-
-    // Update fields when tab changes
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            setTimeout(updateExportFields, 0);
-        });
-    });
-
-    // Initial fields setup
-    updateExportFields();
-}
-
-// Export button click handler
-document.getElementById('exportBtn')?.addEventListener('click', () => {
-    const modal = document.getElementById('exportModal');
-    modal.style.display = 'block';
-});
-
-// Get selected items based on active tab
-function getSelectedItems() {
-    if (activeTab === 'productsTab') {
-        return products.filter(product => selectedProducts.has(product.id));
-    } else {
-        // For collections tab, return all products from selected collections
-        const selectedItems = [];
-        collections.forEach(collection => {
-            if (selectedCollections.has(collection.id)) {
-                selectedItems.push(...collection.products);
+            if (!items || items.length === 0) {
+                log('No items selected for export', 'warning', 'warning');
+                return;
             }
-        });
-        return selectedItems;
+
+            try {
+                await exportToCSV(items);
+                modal.style.display = 'none';
+                log('Export completed successfully', 'success', 'check_circle');
+            } catch (error) {
+                log(`Export failed: ${error.message}`, 'error', 'error');
+            }
+        };
     }
 }
 
-async function exportData(items, format, fields) {
+/**
+ * Exports the selected items to a CSV file
+ * @param {Array} items - Array of items to export
+ */
+async function exportToCSV(items) {
     if (!items || items.length === 0) {
-        throw new Error('No items selected for export');
+        throw new Error('No items to export');
     }
 
-    // Filter item data based on selected fields
-    const filteredItems = items.map(item => {
-        const filteredItem = {};
-        fields.forEach(field => {
-            if (item.hasOwnProperty(field)) {
-                let value = item[field];
-                
-                // Handle special cases
-                if (field === 'images' && Array.isArray(value)) {
-                    value = value.join(';');
-                } else if (field === 'categories' && Array.isArray(value)) {
-                    value = value.join(';');
-                } else if (field === 'price' || field === 'regular_price' || field === 'sale_price') {
-                    value = formatPrice(value);
+    // Get the first item to determine available fields
+    const firstItem = items[0];
+    const fields = Object.keys(firstItem);
+
+    // Create CSV content
+    const csvContent = [
+        // Header row
+        fields.join(','),
+        // Data rows
+        ...items.map(item => 
+            fields.map(field => {
+                const value = item[field];
+                // Handle special cases (arrays, objects, etc.)
+                if (Array.isArray(value)) {
+                    return `"${value.join(';')}"`;
                 }
-                
-                filteredItem[field] = value;
-            }
-        });
-        return filteredItem;
-    });
+                if (typeof value === 'object' && value !== null) {
+                    return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
+                }
+                if (typeof value === 'string' && value.includes(',')) {
+                    return `"${value.replace(/"/g, '""')}"`;
+                }
+                return value || '';
+            }).join(',')
+        )
+    ].join('\n');
 
-    let content;
-    let mimeType;
-
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const itemType = activeTab === 'productsTab' ? 'products' : 'collections';
-    const filename = `${itemType}_export_${timestamp}`;
-
-    switch (format.toLowerCase()) {
-        case 'csv':
-            content = convertToCSV(filteredItems, fields);
-            mimeType = 'text/csv';
-            break;
-        case 'json':
-            content = JSON.stringify(filteredItems, null, 2);
-            mimeType = 'application/json';
-            break;
-        case 'excel':
-            content = convertToCSV(filteredItems, fields);
-            mimeType = 'text/csv';
-            break;
-        default:
-            throw new Error('Unsupported export format');
-    }
-
-    // Create blob and download
-    const blob = new Blob([content], { type: mimeType });
+    // Create and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `export_${timestamp}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
-}
-
-function convertToCSV(items, fields) {
-    if (!items || items.length === 0) return '';
-
-    const headers = fields.join(',');
-    const rows = items.map(item => {
-        return fields.map(field => {
-            let value = item[field];
-            
-            // Handle different value types
-            if (value === null || value === undefined) {
-                return '';
-            } else if (typeof value === 'object') {
-                value = JSON.stringify(value);
-            }
-            
-            value = String(value);
-            // Escape quotes and special characters
-            value = value.replace(/"/g, '""');
-            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                value = `"${value}"`;
-            }
-            return value;
-        }).join(',');
-    });
-
-    return [headers, ...rows].join('\n');
-}
-
-/**
- * Updates the UI to reflect the current state
- */
-function updateUI() {
-    // Update the display based on active tab
-    const activeTab = document.querySelector('.tab-content.active');
-    if (activeTab) {
-        if (activeTab.id === 'productsContent') {
-            // Update product cards
-            const productCards = document.querySelectorAll('.product-card');
-            productCards.forEach(card => {
-                const productId = parseInt(card.dataset.id);
-                card.classList.toggle('selected', selectedProducts.has(productId));
-            });
-        } else if (activeTab.id === 'collectionsContent') {
-            // Update collection cards
-            const collectionCards = document.querySelectorAll('.collection-card');
-            collectionCards.forEach(card => {
-                const collectionId = parseInt(card.dataset.id);
-                card.classList.toggle('selected', selectedCollections.has(collectionId));
-            });
-        }
-    }
-
-    // Update selection count and button states
-    updateSelectedCount();
-    updateButtonStates();
-}
-
-function updateButtonStates() {
-    const exportButton = document.getElementById('exportSelected');
-    const clearButton = document.getElementById('clearButton');
-    const selectAllBtn = document.getElementById('selectAll');
-    const invertSelectionBtn = document.getElementById('invertSelection');
-    
-    // Get counts based on active tab
-    const activeTab = document.querySelector('.tab-content.active');
-    let selectedCount = 0;
-    let totalCount = 0;
-    
-    if (activeTab) {
-        if (activeTab.id === 'productsContent') {
-            selectedCount = selectedProducts.size;
-            totalCount = products.length;
-        } else if (activeTab.id === 'collectionsContent') {
-            selectedCount = selectedCollections.size;
-            totalCount = collections.length;
-        }
-    }
-
-    // Update button states
-    if (exportButton) {
-        const hasSelection = selectedProducts.size > 0 || selectedCollections.size > 0;
-        exportButton.disabled = !hasSelection;
-    }
-
-    if (clearButton) {
-        clearButton.disabled = totalCount === 0;
-    }
-
-    if (selectAllBtn) {
-        selectAllBtn.disabled = totalCount === 0;
-    }
-
-    if (invertSelectionBtn) {
-        invertSelectionBtn.disabled = totalCount === 0;
-    }
-}
-
-function clearSelection() {
-    selectedProducts.clear();
-    selectedCollections.clear();
-    updateUI();
-}
-
-/**
- * Refreshes card selections in the UI
- */
-function refreshCardSelections() {
-    const cards = document.querySelectorAll('.product-card, .collection-card');
-    const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
-
-    cards.forEach(card => {
-        const id = card.dataset.id;
-        if (selectedSet.has(id)) {
-            card.classList.add('selected');
-        } else {
-            card.classList.remove('selected');
-        }
-    });
 }
 
 /**
@@ -1314,708 +1035,74 @@ function refreshCardSelections() {
 function setLoading(loading) {
     isLoading = loading;
     const scrapeButton = document.getElementById('scrapeButton');
-    const loadingSpinner = document.getElementById('loadingSpinner');
+    const loadingIcon = document.querySelector('.logo-animation .material-icons.secondary');
     
     if (scrapeButton) {
         scrapeButton.disabled = loading;
-        scrapeButton.style.cursor = loading ? 'not-allowed' : 'pointer';
+        scrapeButton.style.cursor = loading ? 'wait' : 'pointer';
     }
     
-    if (loadingSpinner) {
-        loadingSpinner.style.display = loading ? 'inline-block' : 'none';
+    if (loadingIcon) {
+        loadingIcon.style.animation = loading ? 'spin 1s linear infinite' : 'none';
     }
 }
 
-/**
- * Initializes button event listeners
- */
-function initializeButtons() {
-    const scrapeButton = document.getElementById('scrapeButton');
-    const clearButton = document.getElementById('clearButton');
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    setupExportModal();
     
+    // Set up tab switching
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Remove active class from all buttons and contents
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            // Add active class to clicked button
+            button.classList.add('active');
+            
+            // Show corresponding content
+            const contentId = button.id.replace('Tab', 'Content');
+            document.getElementById(contentId)?.classList.add('active');
+
+            // Clear selections when switching tabs
+            if (button.id === 'productsTab') {
+                selectedCollections.clear();
+            } else if (button.id === 'collectionsTab') {
+                selectedProducts.clear();
+            }
+            updateButtonStates();
+            updateSelectedCount();
+        });
+    });
+
+    // Initialize scrape button
+    const scrapeButton = document.getElementById('scrapeButton');
     if (scrapeButton) {
         scrapeButton.addEventListener('click', async () => {
             if (isLoading) return;
             
             try {
                 setLoading(true);
-                // Use the active tab to determine what to scrape
-                const type = activeTab === 'productsTab' ? 'products' : 'collections';
-                
-                if (type === 'products') {
+                const activeTab = document.querySelector('.tab-btn.active');
+                if (activeTab.id === 'productsTab') {
                     await scrapeProducts();
-                    displayProducts();
-                } else if (type === 'collections') {
-                    await scrapeCollections();
-                    displayCollections();
+                } else if (activeTab.id === 'collectionsTab') {
+                    await scrapeCollectionsWithUI();
                 }
             } catch (error) {
-                console.error('Error scraping:', error);
                 log(`Error: ${error.message}`, 'error', 'error');
+                console.error('Scraping error:', error);
             } finally {
                 setLoading(false);
             }
         });
     }
 
-    if (clearButton) {
-        clearButton.addEventListener('click', () => {
-            products = [];
-            selectedProducts.clear();
-            currentPage = 1;
-            totalPages = 1;
-            const productsGrid = document.getElementById('productsGrid');
-            if (productsGrid) {
-                productsGrid.innerHTML = '';
-            }
-            updateButtonStates();
-            updatePagination();
-            clearTerminal();
-        });
-    }
-
-    // Set initial button states
-    updateButtonStates();
-}
-
-// Initialize everything when the DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+    // Initialize other UI elements
     initializeButtons();
-    setupTabs();
-    setupExportModal();
-    setupSelectionHandlers();
+    updateButtonStates();
 });
-
-function setupExportModal() {
-    const modal = document.getElementById('exportModal');
-    const closeBtn = modal.querySelector('.close-button');
-    const exportBtn = document.getElementById('confirmExport');
-    const exportSelectedBtn = document.getElementById('exportSelected');
-
-    // Setup export selected button
-    if (exportSelectedBtn) {
-        exportSelectedBtn.addEventListener('click', () => {
-            const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
-            if (selectedSet.size === 0) {
-                log('Please select items to export', 'warning', 'warning');
-                return;
-            }
-            modal.style.display = 'block';
-            updateExportFields();
-        });
-    }
-
-    // Setup close button
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-    }
-
-    // Close modal when clicking outside
-    window.addEventListener('click', (event) => {
-        if (event.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
-
-    // Setup export confirmation button
-    if (exportBtn) {
-        exportBtn.addEventListener('click', () => {
-            const format = document.getElementById('exportFormat').value;
-            const fields = Array.from(document.querySelectorAll('#exportFields input:checked'))
-                .map(input => input.value);
-
-            if (fields.length === 0) {
-                log('Please select at least one field to export', 'warning', 'warning');
-                return;
-            }
-
-            exportItems(format, fields);
-            modal.style.display = 'none';
-        });
-    }
-}
-
-function exportItems(format, fields) {
-    try {
-        const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
-        const items = activeTab === 'productsTab' ? products : collections;
-        
-        if (selectedSet.size === 0) {
-            log('No items selected for export', 'warning', 'warning');
-            return;
-        }
-
-        // Get selected items
-        const selectedItems = items.filter(item => selectedSet.has(item.id));
-        
-        // Filter fields
-        const exportData = selectedItems.map(item => {
-            const filteredItem = {};
-            fields.forEach(field => {
-                if (field in item) {
-                    filteredItem[field] = item[field];
-                }
-            });
-            return filteredItem;
-        });
-
-        let content;
-        let mimeType;
-
-        const timestamp = new Date().toISOString().slice(0, 10);
-        const itemType = activeTab === 'productsTab' ? 'products' : 'collections';
-        const filename = `${itemType}_export_${timestamp}`;
-
-        switch (format.toLowerCase()) {
-            case 'csv':
-                content = convertToCSV(exportData);
-                mimeType = 'text/csv';
-                break;
-            case 'json':
-                content = JSON.stringify(exportData, null, 2);
-                mimeType = 'application/json';
-                break;
-            case 'excel':
-                content = convertToCSV(exportData);
-                mimeType = 'text/csv';
-                break;
-            default:
-                throw new Error('Unsupported export format');
-        }
-
-        // Create and trigger download
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        log(`Successfully exported ${selectedSet.size} ${itemType}`, 'success', 'download');
-    } catch (error) {
-        log(`Export failed: ${error.message}`, 'error', 'error');
-        console.error('Export error:', error);
-    }
-}
-
-function convertToCSV(items) {
-    if (!items || items.length === 0) return '';
-
-    const headers = Object.keys(items[0]);
-    const rows = items.map(item => {
-        return headers.map(header => {
-            let value = item[header];
-            
-            // Handle different value types
-            if (value === null || value === undefined) {
-                return '';
-            } else if (typeof value === 'object') {
-                value = JSON.stringify(value);
-            }
-            
-            value = String(value);
-            // Escape quotes and special characters
-            value = value.replace(/"/g, '""');
-            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                value = `"${value}"`;
-            }
-            return value;
-        }).join(',');
-    });
-
-    return [headers.join(','), ...rows].join('\n');
-}
-
-function updateExportFields() {
-    const fieldsContainer = document.getElementById('exportFields');
-    if (!fieldsContainer) return;
-
-    const items = activeTab === 'productsTab' ? products : collections;
-    const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
-
-    if (selectedSet.size === 0 || items.length === 0) {
-        fieldsContainer.innerHTML = '<p>No items selected</p>';
-        return;
-    }
-
-    // Get the first selected item to determine available fields
-    const firstItem = items.find(item => selectedSet.has(item.id));
-    if (!firstItem) return;
-
-    const fields = Object.keys(firstItem);
-    const commonFields = ['id', 'name', 'price', 'description'];
-
-    fieldsContainer.innerHTML = fields.map(field => `
-        <label class="field-option">
-            <input type="checkbox" value="${field}" ${commonFields.includes(field) ? 'checked' : ''}>
-            ${field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')}
-        </label>
-    `).join('');
-}
-
-// Initialize export functionality
-document.addEventListener('DOMContentLoaded', () => {
-    setupExportModal();
-});
-
-function setupSelectionHandlers() {
-    const selectAllBtn = document.getElementById('selectAll');
-    const invertSelectionBtn = document.getElementById('invertSelection');
-
-    if (selectAllBtn) {
-        selectAllBtn.addEventListener('click', () => {
-            const items = activeTab === 'productsTab' ? products : collections;
-            const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
-
-            // Toggle selection
-            if (selectedSet.size === items.length) {
-                selectedSet.clear();
-                log('Cleared all selections', 'info', 'deselect');
-            } else {
-                selectedSet.clear(); // Clear first to ensure clean state
-                items.forEach(item => selectedSet.add(item.id));
-                log(`Selected all items (${items.length})`, 'success', 'select_all');
-            }
-
-            // Update UI
-            updateSelectedItemsList();
-            updateSelectedCount();
-            updateButtonStates();
-            refreshCardSelections();
-        });
-    }
-
-    if (invertSelectionBtn) {
-        invertSelectionBtn.addEventListener('click', () => {
-            const items = activeTab === 'productsTab' ? products : collections;
-            const selectedSet = activeTab === 'productsTab' ? selectedProducts : selectedCollections;
-
-            items.forEach(item => {
-                if (selectedSet.has(item.id)) {
-                    selectedSet.delete(item.id);
-                } else {
-                    selectedSet.add(item.id);
-                }
-            });
-
-            // Update UI
-            updateSelectedItemsList();
-            updateSelectedCount();
-            updateButtonStates();
-            refreshCardSelections();
-            log('Inverted selection', 'info', 'swap_horiz');
-        });
-    }
-}
-
-/**
- * Updates the list of selected items in the UI
- */
-function updateSelectedItemsList() {
-    const container = document.getElementById('selectedItemsList');
-    if (!container) return;
-
-    container.innerHTML = '';
-    let count = 0;
-
-    // Add selected collections
-    for (const id of selectedCollections) {
-        const collection = collections.find(c => c.id === id);
-        if (collection) {
-            count++;
-            container.appendChild(createSelectedItemElement(collection, 'collection'));
-        }
-    }
-
-    // Add selected products
-    for (const id of selectedProducts) {
-        const product = products.find(p => p.id === id);
-        if (product) {
-            count++;
-            container.appendChild(createSelectedItemElement(product, 'product'));
-        }
-    }
-
-    // Update count
-    const countElement = document.getElementById('selectedCount');
-    if (countElement) {
-        countElement.textContent = count;
-    }
-
-    // Update export button state
-    const exportButton = document.getElementById('exportSelected');
-    if (exportButton) {
-        exportButton.disabled = count === 0;
-    }
-}
-
-/**
- * Creates a selected item element for the UI
- * @param {Object} item - The collection or product item
- * @param {string} type - The type of item ('collection' or 'product')
- * @returns {HTMLElement} The created element
- */
-function createSelectedItemElement(item, type) {
-    const div = document.createElement('div');
-    div.className = 'selected-item';
-    div.dataset.id = item.id;
-
-    const isSelected = type === 'collection' ? selectedCollections.has(item.id) : selectedProducts.has(item.id);
-    if (isSelected) {
-        div.classList.add('selected');
-    }
-
-    div.innerHTML = `
-        <div class="selected-item-info">
-            <span class="selected-item-type">${type}</span>
-            <span>${item.name}</span>
-        </div>
-        <button class="selected-item-remove" data-id="${item.id}" data-type="${type}">
-            <span class="material-icons">close</span>
-        </button>
-    `;
-
-    // Add remove button listener
-    div.querySelector('.selected-item-remove').addEventListener('click', (e) => {
-        const id = parseInt(e.currentTarget.dataset.id);
-        const type = e.currentTarget.dataset.type;
-        if (type === 'collection') {
-            selectedCollections.delete(id);
-        } else {
-            selectedProducts.delete(id);
-        }
-        updateSelectedItemsList();
-        updateUI();
-    });
-
-    return div;
-}
-
-/**
- * Updates the count of selected items in the UI
- */
-function updateSelectedCount() {
-    const totalSelected = selectedProducts.size + selectedCollections.size;
-    
-    // Update all count displays
-    const countElements = [
-        document.getElementById('selectedCount'),
-        document.getElementById('headerSelectedCount')
-    ];
-
-    countElements.forEach(element => {
-        if (element) {
-            element.textContent = totalSelected;
-        }
-    });
-
-    // Update export button state
-    const exportButton = document.getElementById('exportSelected');
-    if (exportButton) {
-        exportButton.disabled = totalSelected === 0;
-    }
-}
-
-/**
- * Shows a toast message to the user
- * @param {string} message - The message to display
- * @param {boolean} error - Whether the message is an error
- */
-function showToast(message, error = false) {
-    const toast = document.getElementById('toast');
-    if (!toast) {
-        console.error('Toast element not found');
-        return;
-    }
-
-    toast.textContent = message;
-    toast.classList.toggle('error', error);
-    toast.classList.add('visible');
-
-    setTimeout(() => {
-        toast.classList.remove('visible');
-    }, 3000);
-}
-
-/**
- * Formats a price string to ensure consistent decimal separator (comma)
- * and proper currency symbol placement.
- * 
- * @param {string|number} priceStr - The price to format
- * @returns {string} Formatted price string
- */
-function formatPrice(priceStr) {
-    if (!priceStr) return '';
-    
-    // Log input for debugging
-    console.log('Price input:', priceStr);
-    
-    // Convert to string if number
-    let price = priceStr.toString();
-    
-    // Handle HTML content if present
-    if (price.includes('<')) {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = price;
-        price = tempDiv.textContent || tempDiv.innerText;
-    }
-    
-    // Remove currency symbols and whitespace
-    price = price.replace(/[^\d.,]/g, '').trim();
-    console.log('After cleaning:', price);
-    
-    // Handle different decimal separators
-    if (price.includes('.') && price.includes(',')) {
-        // European format (1.234,56)
-        price = price.replace(/\./g, '').replace(',', '.');
-    } else if (price.includes(',')) {
-        // Single comma format
-        price = price.replace(',', '.');
-    }
-    
-    console.log('Before parsing:', price);
-    
-    // Parse and format
-    const numPrice = parseFloat(price);
-    if (isNaN(numPrice)) {
-        console.log('Failed to parse price');
-        return '';
-    }
-    
-    const formatted = numPrice.toFixed(2).replace('.', ',');
-    console.log('Final formatted price:', formatted);
-    return formatted;
-}
-
-// Add collection scraping and export functionality
-async function scrapeWooCommerceCollections(baseUrl) {
-    const collections = [];
-    let page = 1;
-    let hasMore = true;
-    
-    while (hasMore) {
-        try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products/categories?per_page=100&page=${page}`);
-            if (!response.ok) throw new Error('Failed to fetch collections');
-            
-            const data = await response.json();
-            if (!data || data.length === 0) {
-                hasMore = false;
-                break;
-            }
-            
-            // For each collection, fetch its products
-            for (const cat of data) {
-                const collectionProducts = await scrapeWooCommerceCollectionProducts(baseUrl, cat.id);
-                collections.push({
-                    id: cat.id.toString(),
-                    name: cat.name,
-                    slug: cat.slug,
-                    description: cat.description,
-                    count: cat.count,
-                    image: cat.image?.src || null,
-                    parent: cat.parent,
-                    products: collectionProducts
-                });
-                
-                log(`Scraped ${collectionProducts.length} products from collection: ${cat.name}`, 'info', 'info');
-            }
-            
-            page++;
-        } catch (error) {
-            log(`Error fetching collections: ${error.message}`, 'error', 'error');
-            hasMore = false;
-        }
-    }
-    
-    return collections;
-}
-
-async function scrapeShopifyCollections(baseUrl) {
-    try {
-        const response = await fetch(`${baseUrl}/collections.json`);
-        if (!response.ok) throw new Error('Failed to fetch Shopify collections');
-        
-        const data = await response.json();
-        const collections = [];
-
-        // For each collection, fetch its products
-        for (const collection of data.collections) {
-            const collectionProducts = await scrapeShopifyCollectionProducts(baseUrl, collection.handle);
-            collections.push({
-                id: collection.id,
-                name: collection.title,
-                description: collection.description,
-                handle: collection.handle,
-                image: collection.image?.src || null,
-                products: collectionProducts
-            });
-
-            // Log progress
-            log(`Scraped ${collectionProducts.length} products from collection: ${collection.title}`, 'info', 'info');
-        }
-
-        return collections;
-    } catch (error) {
-        log(`Error fetching Shopify collections: ${error.message}`, 'error', 'error');
-        return [];
-    }
-}
-
-async function scrapeCollectionProducts(baseUrl, categoryId) {
-    const products = [];
-    let page = 1;
-    let hasMore = true;
-
-    while (hasMore) {
-        try {
-            const response = await fetch(`${baseUrl}/wp-json/wc/v3/products?category=${categoryId}&per_page=100&page=${page}&status=publish`);
-            if (!response.ok) throw new Error(`Failed to fetch products for category ${categoryId}`);
-
-            const data = await response.json();
-            if (!data || data.length === 0) {
-                hasMore = false;
-                break;
-            }
-
-            products.push(...data.map(product => ({
-                id: product.id.toString(),
-                title: product.name,
-                sku: product.sku,
-                price: product.price,
-                regular_price: product.regular_price,
-                sale_price: product.sale_price,
-                stock_status: product.stock_status,
-                description: product.description,
-                short_description: product.short_description,
-                categories: product.categories.map(cat => cat.name),
-                images: product.images.map(img => img.src),
-                variations: product.variations,
-                attributes: product.attributes,
-                url: product.permalink
-            })));
-
-            page++;
-        } catch (error) {
-            log(`Error fetching products for category ${categoryId}: ${error.message}`, 'error', 'error');
-            hasMore = false;
-        }
-    }
-
-    return products;
-}
-
-async function scrapeShopifyCollectionProducts(baseUrl, handle) {
-    try {
-        const response = await fetch(`${baseUrl}/collections/${handle}/products.json`);
-        if (!response.ok) throw new Error(`Failed to fetch products for collection ${handle}`);
-
-        const data = await response.json();
-        return data.products.map(product => ({
-            id: product.id.toString(),
-            title: product.title,
-            handle: product.handle,
-            description: product.body_html,
-            price: product.variants[0]?.price,
-            compare_at_price: product.variants[0]?.compare_at_price,
-            sku: product.variants[0]?.sku,
-            stock_status: product.variants[0]?.available ? 'instock' : 'outofstock',
-            images: product.images.map(img => img.src),
-            variants: product.variants,
-            options: product.options,
-            url: `${baseUrl}/products/${product.handle}`
-        }));
-    } catch (error) {
-        log(`Error fetching products for collection ${handle}: ${error.message}`, 'error', 'error');
-        return [];
-    }
-}
-
-// Update display functions to show products within collections
-function displayCollections() {
-    const container = document.getElementById('collectionsContent');
-    if (!container) return;
-
-    container.innerHTML = '';
-    if (!collections.length) {
-        container.innerHTML = '<div class="no-items">No collections found</div>';
-        return;
-    }
-
-    collections.forEach(collection => {
-        const card = createCollectionCard(collection);
-        container.appendChild(card);
-    });
-}
-
-function createCollectionCard(collection) {
-    const card = document.createElement('div');
-    card.className = 'collection-card';
-    card.dataset.id = collection.id;
-
-    const selected = selectedCollections.has(collection.id);
-    if (selected) card.classList.add('selected');
-
-    // Create collection header
-    const header = document.createElement('div');
-    header.className = 'collection-header';
-    header.innerHTML = `
-        <h3>${collection.name}</h3>
-        <span class="product-count">${collection.products.length} products</span>
-    `;
-    card.appendChild(header);
-
-    // Create products grid
-    const productsGrid = document.createElement('div');
-    productsGrid.className = 'collection-products';
-    
-    // Add first 4 products as preview
-    collection.products.slice(0, 4).forEach(product => {
-        const productPreview = document.createElement('div');
-        productPreview.className = 'product-preview';
-        productPreview.innerHTML = `
-            <img src="${product.images[0] || 'placeholder.jpg'}" alt="${product.title}">
-            <div class="product-info">
-                <div class="product-title">${product.title}</div>
-                <div class="product-price">${formatPrice(product.price)}</div>
-            </div>
-        `;
-        productsGrid.appendChild(productPreview);
-    });
-
-    if (collection.products.length > 4) {
-        const moreProducts = document.createElement('div');
-        moreProducts.className = 'more-products';
-        moreProducts.textContent = `+${collection.products.length - 4} more`;
-        productsGrid.appendChild(moreProducts);
-    }
-
-    card.appendChild(productsGrid);
-
-    // Add click handler
-    card.addEventListener('click', (e) => {
-        if (e.target.closest('.product-preview')) {
-            // Handle product click
-            return;
-        }
-        
-        const id = collection.id;
-        if (selectedCollections.has(id)) {
-            selectedCollections.delete(id);
-            card.classList.remove('selected');
-        } else {
-            selectedCollections.add(id);
-            card.classList.add('selected');
-        }
-        updateSelectedCount();
-        updateButtonStates();
-    });
-
-    return card;
-}
