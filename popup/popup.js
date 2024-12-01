@@ -102,7 +102,7 @@ function updatePagination() {
  * Updates the state of action buttons based on selections
  */
 function updateButtonStates() {
-    const exportBtn = document.getElementById('exportBtn');
+    const exportBtn = document.getElementById('exportSelected');
     const activeTab = document.querySelector('.tab-btn.active');
     
     if (exportBtn) {
@@ -134,13 +134,93 @@ function updateSelectedCount() {
  */
 function initializeButtons() {
     // Initialize export button
-    const exportBtn = document.getElementById('exportBtn');
+    const exportBtn = document.getElementById('exportSelected');
     if (exportBtn) {
         exportBtn.addEventListener('click', () => {
             const modal = document.getElementById('exportModal');
-            if (modal) modal.style.display = 'block';
+            const activeTab = document.querySelector('.tab-btn.active');
+            const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
+            
+            if (selectedSet.size === 0) {
+                log('Please select items to export', 'warning', 'warning');
+                return;
+            }
+            
+            if (modal) {
+                modal.style.display = 'block';
+                const countElement = document.getElementById('exportCount');
+                const typeElement = document.getElementById('exportType');
+                if (countElement) {
+                    countElement.textContent = selectedSet.size;
+                }
+                if (typeElement) {
+                    typeElement.textContent = activeTab?.id === 'productsTab' ? 'products' : 'collections';
+                }
+            }
         });
     }
+
+    // Initialize Select All button
+    const selectAllBtn = document.getElementById('selectAll');
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', () => {
+            const activeTab = document.querySelector('.tab-btn.active');
+            const checkboxes = document.querySelectorAll('.card-checkbox');
+            const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
+            
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+                selectedSet.add(checkbox.dataset.id);
+            });
+            
+            updateSelectedCount();
+            updateButtonStates();
+            log('Selected all items', 'info', 'select_all');
+        });
+    }
+
+    // Initialize Invert Selection button
+    const invertBtn = document.getElementById('invertSelection');
+    if (invertBtn) {
+        invertBtn.addEventListener('click', () => {
+            const activeTab = document.querySelector('.tab-btn.active');
+            const checkboxes = document.querySelectorAll('.card-checkbox');
+            const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
+            
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = !checkbox.checked;
+                if (checkbox.checked) {
+                    selectedSet.add(checkbox.dataset.id);
+                } else {
+                    selectedSet.delete(checkbox.dataset.id);
+                }
+            });
+            
+            updateSelectedCount();
+            updateButtonStates();
+            log('Inverted selection', 'info', 'swap_horiz');
+        });
+    }
+
+    // Initialize checkbox event listeners
+    document.addEventListener('change', (event) => {
+        if (event.target.classList.contains('card-checkbox')) {
+            const checkbox = event.target;
+            const activeTab = document.querySelector('.tab-btn.active');
+            const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
+            
+            if (checkbox.checked) {
+                selectedSet.add(checkbox.dataset.id);
+                log(`Selected ${checkbox.dataset.type}: ${checkbox.dataset.id}`, 'info', 'check_circle');
+            } else {
+                selectedSet.delete(checkbox.dataset.id);
+                log(`Deselected ${checkbox.dataset.type}: ${checkbox.dataset.id}`, 'info', 'remove_circle');
+            }
+            
+            updateSelectedCount();
+            updateButtonStates();
+        }
+    });
 
     // Initialize pagination buttons
     document.getElementById('prevPage')?.addEventListener('click', () => {
@@ -530,14 +610,16 @@ function displayProducts() {
  */
 function createProductCard(product) {
     const card = document.createElement('div');
-    card.className = 'product-card';
+    card.className = 'card product-card';
     card.dataset.id = product.id;
 
+    // Checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'card-checkbox';
     checkbox.dataset.id = product.id;
     checkbox.dataset.type = 'product';
+    checkbox.checked = selectedProducts.has(product.id);
 
     // Image section
     const img = document.createElement('img');
@@ -637,14 +719,16 @@ function displayCollections() {
  */
 function createCollectionCard(collection) {
     const card = document.createElement('div');
-    card.className = 'collection-card';
+    card.className = 'card collection-card';
     card.dataset.id = collection.id;
 
+    // Checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'card-checkbox';
     checkbox.dataset.id = collection.id;
     checkbox.dataset.type = 'collection';
+    checkbox.checked = selectedCollections.has(collection.id);
 
     const info = document.createElement('div');
     info.className = 'collection-info';
@@ -851,6 +935,8 @@ function filterProducts() {
     const endIndex = startIndex + itemsPerPage;
     const productsToShow = filteredProducts.slice(startIndex, endIndex);
 
+    console.log(`Displaying products ${startIndex + 1} to ${endIndex} of ${filteredProducts.length}`);
+
     // Display products
     productsToShow.forEach(product => {
         const card = createProductCard(product);
@@ -959,21 +1045,34 @@ function setupExportModal() {
     if (confirmBtn) {
         confirmBtn.onclick = async () => {
             const activeTab = document.querySelector('.tab-btn.active');
-            const items = activeTab?.id === 'productsTab' ? 
-                Array.from(selectedProducts).map(id => products.find(p => p.id === id)) :
-                Array.from(selectedCollections).map(id => collections.find(c => c.id === id));
+            if (!activeTab) {
+                log('No active tab found', 'error', 'error');
+                return;
+            }
 
-            if (!items || items.length === 0) {
+            const selectedSet = activeTab.id === 'productsTab' ? selectedProducts : selectedCollections;
+            const allItems = activeTab.id === 'productsTab' ? products : collections;
+
+            if (!selectedSet || selectedSet.size === 0) {
                 log('No items selected for export', 'warning', 'warning');
                 return;
             }
 
             try {
-                await exportToCSV(items);
+                const selectedItems = Array.from(selectedSet)
+                    .map(id => allItems.find(item => String(item.id) === String(id)))
+                    .filter(item => item != null);
+
+                if (selectedItems.length === 0) {
+                    throw new Error('No valid items found for export');
+                }
+
+                await exportToCSV(selectedItems);
                 modal.style.display = 'none';
                 log('Export completed successfully', 'success', 'check_circle');
             } catch (error) {
                 log(`Export failed: ${error.message}`, 'error', 'error');
+                console.error('Export error:', error);
             }
         };
     }
@@ -984,33 +1083,51 @@ function setupExportModal() {
  * @param {Array} items - Array of items to export
  */
 async function exportToCSV(items) {
-    if (!items || items.length === 0) {
+    if (!items || !Array.isArray(items) || items.length === 0) {
         throw new Error('No items to export');
     }
 
+    // Filter out any null or undefined items
+    const validItems = items.filter(item => item != null);
+    
+    if (validItems.length === 0) {
+        throw new Error('No valid items to export');
+    }
+
     // Get the first item to determine available fields
-    const firstItem = items[0];
-    const fields = Object.keys(firstItem);
+    const firstItem = validItems[0];
+    
+    // Define fields based on item type
+    const fields = firstItem.hasOwnProperty('price') ? 
+        ['id', 'name', 'price', 'regular_price', 'sale_price', 'sku', 'stock_status', 'description', 'short_description', 'categories', 'images'] :
+        ['id', 'name', 'description', 'slug', 'count'];
 
     // Create CSV content
     const csvContent = [
         // Header row
         fields.join(','),
         // Data rows
-        ...items.map(item => 
+        ...validItems.map(item => 
             fields.map(field => {
-                const value = item[field];
-                // Handle special cases (arrays, objects, etc.)
-                if (Array.isArray(value)) {
-                    return `"${value.join(';')}"`;
+                let value = item[field];
+                
+                // Handle special cases
+                if (field === 'price' || field === 'regular_price' || field === 'sale_price') {
+                    value = typeof value === 'object' ? value?.amount || '' : value;
+                } else if (field === 'stock_status') {
+                    value = value || 'outofstock';
+                } else if (field === 'categories') {
+                    value = Array.isArray(value) ? value.map(cat => cat.name).join(';') : '';
+                } else if (field === 'images') {
+                    value = Array.isArray(value) ? value.map(img => img.src).join(';') : '';
                 }
-                if (typeof value === 'object' && value !== null) {
-                    return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
+
+                // Convert to string and escape if needed
+                value = String(value || '');
+                if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                    value = `"${value.replace(/"/g, '""')}"`;
                 }
-                if (typeof value === 'string' && value.includes(',')) {
-                    return `"${value.replace(/"/g, '""')}"`;
-                }
-                return value || '';
+                return value;
             }).join(',')
         )
     ].join('\n');
@@ -1019,9 +1136,12 @@ async function exportToCSV(items) {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+    const type = firstItem.hasOwnProperty('price') ? 'products' : 'collections';
+    const filename = `${type}_export_${timestamp}.csv`;
+    
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `export_${timestamp}.csv`);
+    link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
