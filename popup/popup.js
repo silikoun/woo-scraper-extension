@@ -667,11 +667,12 @@ function createProductCard(product) {
     price.className = 'product-price';
     price.textContent = formatPrice(product.price);
 
-    const stock = document.createElement('div');
-    stock.className = `product-stock ${product.inStock ? 'in-stock' : 'out-of-stock'}`;
-    stock.innerHTML = `
-        <span class="material-icons">${product.inStock ? 'check_circle' : 'cancel'}</span>
-        ${product.inStock ? 'In Stock' : 'Out of Stock'}
+    // Category section
+    const category = document.createElement('div');
+    category.className = 'product-category';
+    category.innerHTML = `
+        <span class="material-icons">category</span>
+        ${product.categories?.[0] || 'Uncategorized'}
     `;
 
     // Footer section
@@ -687,7 +688,7 @@ function createProductCard(product) {
     // Assemble card
     info.appendChild(title);
     info.appendChild(price);
-    info.appendChild(stock);
+    info.appendChild(category);
 
     card.appendChild(checkbox);
     card.appendChild(img);

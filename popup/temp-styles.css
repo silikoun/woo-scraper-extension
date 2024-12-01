@@ -1,0 +1,17 @@
+.product-category {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.product-category .material-icons {
+    font-size: 16px;
+}
+
+/* Remove old stock status styles */
+.product-stock {
+    display: none;
+}
