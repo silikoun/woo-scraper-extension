@@ -364,18 +364,38 @@ async function scrapeWooCommerceProducts(baseUrl) {
                     }
 
                     const wpProducts = await wpResponse.json();
-                    const processedProducts = wpProducts.map(product => ({
-                        id: product.id,
-                        name: product.title?.rendered || '',
-                        price: product.meta?.price || '',
-                        price_html: product.meta?.price_html || '',
-                        description: product.content?.rendered || '',
-                        short_description: product.excerpt?.rendered || '',
-                        sku: product.meta?.sku || '',
-                        stock_status: product.meta?.stock_status || '',
-                        images: product._embedded?.['wp:featuredmedia']?.map(media => media.source_url) || [],
-                        categories: product._embedded?.['wp:term']?.[0]?.map(term => term.name) || []
-                    }));
+                    const processedProducts = wpProducts.map(product => {
+                        const priceInfo = extractPrice(product);
+                        const images = [];
+                        
+                        // Get featured image
+                        if (product._embedded?.['wp:featuredmedia']?.[0]?.source_url) {
+                            images.push(product._embedded['wp:featuredmedia'][0].source_url);
+                        }
+                        
+                        // Get gallery images from meta
+                        if (product.meta?.gallery_images) {
+                            try {
+                                const galleryImages = JSON.parse(product.meta.gallery_images);
+                                images.push(...galleryImages.filter(url => url));
+                            } catch (e) {
+                                console.warn('Failed to parse gallery images:', e);
+                            }
+                        }
+
+                        return {
+                            id: product.id,
+                            name: product.title?.rendered || '',
+                            ...priceInfo,
+                            description: product.content?.rendered || '',
+                            short_description: product.excerpt?.rendered || '',
+                            sku: product.meta?.sku || '',
+                            stock_status: product.meta?.stock_status || '',
+                            images: images,
+                            image_urls: images.join('\n'), // Add a separate field for CSV export
+                            categories: product._embedded?.['wp:term']?.[0]?.map(term => term.name) || []
+                        };
+                    });
                     results.push(...processedProducts);
                 } else {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -387,18 +407,23 @@ async function scrapeWooCommerceProducts(baseUrl) {
                     break;
                 }
 
-                const processedProducts = products.map(product => ({
-                    id: product.id,
-                    name: product.name,
-                    price: product.prices?.price || '',
-                    price_html: product.prices?.price_html || '',
-                    description: product.description || '',
-                    short_description: product.short_description || '',
-                    sku: product.sku || '',
-                    stock_status: product.stock_status || '',
-                    images: product.images?.map(img => img.src) || [],
-                    categories: product.categories?.map(cat => cat.name) || []
-                }));
+                const processedProducts = products.map(product => {
+                    const priceInfo = extractPrice(product);
+                    const images = (product.images || []).map(img => img.src).filter(url => url);
+
+                    return {
+                        id: product.id,
+                        name: product.name,
+                        ...priceInfo,
+                        description: product.description || '',
+                        short_description: product.short_description || '',
+                        sku: product.sku || '',
+                        stock_status: product.stock_status || '',
+                        images: images,
+                        image_urls: images.join('\n'), // Add a separate field for CSV export
+                        categories: product.categories?.map(cat => cat.name) || []
+                    };
+                });
                 
                 results.push(...processedProducts);
             }
@@ -674,14 +699,132 @@ function createProductCard(product) {
 
 /**
  * Formats a price value with currency symbol
- * @param {number|string} price - The price to format
+ * @param {number|string|object} price - The price to format
  * @param {string} currency - The currency symbol (default: $)
  * @returns {string} The formatted price
  */
 function formatPrice(price, currency = '$') {
-    if (!price) return 'N/A';
-    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-    return `${currency}${numPrice.toFixed(2)}`;
+    if (!price && price !== 0) return '';
+    
+    // Handle price object from WooCommerce Store API
+    if (typeof price === 'object') {
+        if (price.raw) {
+            return currency + normalizePrice(price.raw).toFixed(2);
+        }
+        if (price.value) {
+            return currency + normalizePrice(price.value).toFixed(2);
+        }
+        return '';
+    }
+    
+    // Handle numeric values
+    if (typeof price === 'number' || !isNaN(price)) {
+        return currency + parseFloat(price).toFixed(2);
+    }
+    
+    // Handle price string that might include currency
+    if (typeof price === 'string') {
+        // Remove currency symbols and any non-numeric characters except decimal point
+        const numericStr = price.replace(/[^0-9.]/g, '');
+        const parsedPrice = parseFloat(numericStr);
+        if (!isNaN(parsedPrice)) {
+            return currency + parsedPrice.toFixed(2);
+        }
+    }
+    
+    return '';
+}
+
+/**
+ * Detects if a price value is likely in minor units (cents) and converts if needed
+ * @param {number|string} price - The price to check
+ * @returns {number} Normalized price in major units (dollars)
+ */
+function normalizePrice(price) {
+    if (!price && price !== 0) return '';
+    
+    const numericPrice = parseFloat(price);
+    if (isNaN(numericPrice)) return '';
+    
+    // If price is suspiciously large (over 1000) and has no decimal points,
+    // it's likely in cents and needs conversion
+    if (numericPrice > 1000 && Number.isInteger(numericPrice)) {
+        return numericPrice / 100;
+    }
+    
+    return numericPrice;
+}
+
+/**
+ * Extracts numeric price from various price formats
+ * @param {object} product - The product object from API
+ * @returns {object} Formatted price information
+ */
+function extractPrice(product) {
+    let price = '';
+    let regular_price = '';
+    let sale_price = '';
+
+    // Handle WooCommerce Store API v1 format
+    if (product.prices) {
+        const rawPrice = product.prices.price;
+        const rawRegularPrice = product.prices.regular_price;
+        const rawSalePrice = product.prices.sale_price;
+
+        if (typeof rawPrice === 'object') {
+            price = rawPrice.raw ? normalizePrice(rawPrice.raw) : rawPrice.value ? normalizePrice(rawPrice.value) : '';
+        } else {
+            price = normalizePrice(rawPrice);
+        }
+
+        if (typeof rawRegularPrice === 'object') {
+            regular_price = rawRegularPrice.raw ? normalizePrice(rawRegularPrice.raw) : rawRegularPrice.value ? normalizePrice(rawRegularPrice.value) : '';
+        } else {
+            regular_price = normalizePrice(rawRegularPrice);
+        }
+
+        if (typeof rawSalePrice === 'object') {
+            sale_price = rawSalePrice.raw ? normalizePrice(rawSalePrice.raw) : rawSalePrice.value ? normalizePrice(rawSalePrice.value) : '';
+        } else {
+            sale_price = normalizePrice(rawSalePrice);
+        }
+    }
+    // Handle WooCommerce REST API v3 format
+    else if (product.price) {
+        // Try to extract numeric value from price strings
+        const extractNumericPrice = (priceStr) => {
+            if (!priceStr) return '';
+            // Remove currency symbols and any non-numeric characters except decimal point
+            const numericStr = priceStr.replace(/[^0-9.]/g, '');
+            return normalizePrice(numericStr);
+        };
+
+        price = extractNumericPrice(product.price);
+        regular_price = extractNumericPrice(product.regular_price);
+        sale_price = extractNumericPrice(product.sale_price);
+    }
+    // Handle WordPress REST API format
+    else if (product.meta) {
+        const extractMetaPrice = (metaPrice) => {
+            if (!metaPrice) return '';
+            // Handle both numeric and string values
+            if (typeof metaPrice === 'number') return normalizePrice(metaPrice);
+            // Remove currency symbols and any non-numeric characters except decimal point
+            const numericStr = metaPrice.replace(/[^0-9.]/g, '');
+            return normalizePrice(numericStr);
+        };
+
+        price = extractMetaPrice(product.meta.price);
+        regular_price = extractMetaPrice(product.meta.regular_price);
+        sale_price = extractMetaPrice(product.meta.sale_price);
+    }
+
+    // Format prices with currency symbol
+    return {
+        price: formatPrice(price),
+        regular_price: formatPrice(regular_price),
+        sale_price: formatPrice(sale_price)
+    };
 }
 
 /**
@@ -986,14 +1129,21 @@ function setupTabs() {
             tabs.forEach(t => t.classList.remove('active'));
             tabContents.forEach(content => content.classList.remove('active'));
 
-            // Add active class to clicked tab and corresponding content
+            // Add active class to clicked tab
             tab.classList.add('active');
+
+            // Show corresponding content
             const contentId = tab.id.replace('Tab', 'Content');
             document.getElementById(contentId)?.classList.add('active');
 
-            // Update UI based on active tab
-            updateSelectedCount();
+            // Clear selections when switching tabs
+            if (tab.id === 'productsTab') {
+                selectedCollections.clear();
+            } else if (tab.id === 'collectionsTab') {
+                selectedProducts.clear();
+            }
             updateButtonStates();
+            updateSelectedCount();
         });
     });
 }
@@ -1024,6 +1174,7 @@ function setupExportModal() {
     const modal = document.getElementById('exportModal');
     const closeBtn = modal?.querySelector('.close-button');
     const confirmBtn = document.getElementById('confirmExport');
+    const exportFieldsContainer = document.getElementById('exportFields');
 
     if (!modal) return;
 
@@ -1040,6 +1191,46 @@ function setupExportModal() {
             modal.style.display = 'none';
         }
     };
+
+    // Update field options when modal is shown
+    const exportBtn = document.getElementById('exportSelected');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+            const activeTab = document.querySelector('.tab-btn.active');
+            const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
+
+            if (!selectedSet || selectedSet.size === 0) {
+                log('Please select items to export', 'warning', 'warning');
+                return;
+            }
+
+            // Update field options based on the active tab
+            if (exportFieldsContainer) {
+                const fields = activeTab?.id === 'productsTab' ? PRODUCT_FIELDS : COLLECTION_FIELDS;
+                exportFieldsContainer.innerHTML = fields.map(field => `
+                    <label class="field-option">
+                        <input type="checkbox" 
+                               name="export_field" 
+                               value="${field.id}" 
+                               ${field.default ? 'checked' : ''}>
+                        ${field.label}
+                    </label>
+                `).join('');
+            }
+
+            modal.style.display = 'block';
+
+            // Update count in modal
+            const countElement = document.getElementById('exportCount');
+            const typeElement = document.getElementById('exportType');
+            if (countElement) {
+                countElement.textContent = selectedSet.size;
+            }
+            if (typeElement) {
+                typeElement.textContent = activeTab?.id === 'productsTab' ? 'products' : 'collections';
+            }
+        });
+    }
 
     // Handle export confirmation
     if (confirmBtn) {
@@ -1059,15 +1250,30 @@ function setupExportModal() {
             }
 
             try {
+                // Get selected fields
+                const selectedFields = Array.from(document.querySelectorAll('input[name="export_field"]:checked'))
+                    .map(checkbox => checkbox.value);
+
+                if (selectedFields.length === 0) {
+                    throw new Error('Please select at least one field to export');
+                }
+
                 const selectedItems = Array.from(selectedSet)
                     .map(id => allItems.find(item => String(item.id) === String(id)))
-                    .filter(item => item != null);
+                    .filter(item => item != null)
+                    .map(item => {
+                        const exportItem = {};
+                        selectedFields.forEach(field => {
+                            exportItem[field] = item[field];
+                        });
+                        return exportItem;
+                    });
 
                 if (selectedItems.length === 0) {
                     throw new Error('No valid items found for export');
                 }
 
-                await exportToCSV(selectedItems);
+                await exportToCSV(selectedItems, selectedFields);
                 modal.style.display = 'none';
                 log('Export completed successfully', 'success', 'check_circle');
             } catch (error) {
@@ -1078,36 +1284,44 @@ function setupExportModal() {
     }
 }
 
-/**
- * Exports the selected items to a CSV file
- * @param {Array} items - Array of items to export
- */
-async function exportToCSV(items) {
+// Field definitions for export
+const PRODUCT_FIELDS = [
+    { id: 'id', label: 'ID', default: true },
+    { id: 'name', label: 'Name', default: true },
+    { id: 'price', label: 'Price', default: true },
+    { id: 'regular_price', label: 'Regular Price', default: false },
+    { id: 'sale_price', label: 'Sale Price', default: false },
+    { id: 'sku', label: 'SKU', default: true },
+    { id: 'stock_status', label: 'Stock Status', default: true },
+    { id: 'description', label: 'Description', default: false },
+    { id: 'short_description', label: 'Short Description', default: false },
+    { id: 'categories', label: 'Categories', default: true },
+    { id: 'image_urls', label: 'Image URLs', default: true } // Changed from 'images' to 'image_urls'
+];
+
+const COLLECTION_FIELDS = [
+    { id: 'id', label: 'ID', default: true },
+    { id: 'name', label: 'Name', default: true },
+    { id: 'description', label: 'Description', default: true },
+    { id: 'slug', label: 'Slug', default: false },
+    { id: 'count', label: 'Product Count', default: true }
+];
+
+async function exportToCSV(items, fields) {
     if (!items || !Array.isArray(items) || items.length === 0) {
         throw new Error('No items to export');
     }
 
-    // Filter out any null or undefined items
-    const validItems = items.filter(item => item != null);
-    
-    if (validItems.length === 0) {
-        throw new Error('No valid items to export');
+    if (!fields || !Array.isArray(fields) || fields.length === 0) {
+        throw new Error('No fields selected for export');
     }
-
-    // Get the first item to determine available fields
-    const firstItem = validItems[0];
-    
-    // Define fields based on item type
-    const fields = firstItem.hasOwnProperty('price') ? 
-        ['id', 'name', 'price', 'regular_price', 'sale_price', 'sku', 'stock_status', 'description', 'short_description', 'categories', 'images'] :
-        ['id', 'name', 'description', 'slug', 'count'];
 
     // Create CSV content
     const csvContent = [
         // Header row
         fields.join(','),
         // Data rows
-        ...validItems.map(item => 
+        ...items.map(item => 
             fields.map(field => {
                 let value = item[field];
                 
@@ -1117,9 +1331,13 @@ async function exportToCSV(items) {
                 } else if (field === 'stock_status') {
                     value = value || 'outofstock';
                 } else if (field === 'categories') {
-                    value = Array.isArray(value) ? value.map(cat => cat.name).join(';') : '';
-                } else if (field === 'images') {
-                    value = Array.isArray(value) ? value.map(img => img.src).join(';') : '';
+                    value = Array.isArray(value) ? value.map(cat => cat.name || cat).join(';') : '';
+                } else if (field === 'image_urls') {
+                    // Use the pre-formatted image_urls field
+                    value = item.image_urls || '';
+                } else if (field === 'description' || field === 'short_description') {
+                    // Remove HTML tags and normalize whitespace
+                    value = value ? value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
                 }
 
                 // Convert to string and escape if needed
@@ -1136,7 +1354,7 @@ async function exportToCSV(items) {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-    const type = firstItem.hasOwnProperty('price') ? 'products' : 'collections';
+    const type = fields.includes('price') ? 'products' : 'collections';
     const filename = `${type}_export_${timestamp}.csv`;
     
     const link = document.createElement('a');
