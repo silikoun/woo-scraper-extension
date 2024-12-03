@@ -1,0 +1,33 @@
+<div id="exportModal" class="modal" role="dialog" aria-labelledby="exportModalTitle" aria-modal="true">
+    <div class="modal-content">
+        <header class="modal-header">
+            <h2 id="exportModalTitle">Export Options</h2>
+            <button class="close-btn" aria-label="Close modal">
+                <span class="material-icons">close</span>
+            </button>
+        </header>
+        <div class="modal-body">
+            <div class="export-options">
+                <label class="export-option">
+                    <input type="radio" name="exportType" value="all" checked>
+                    <span>Export All Data</span>
+                </label>
+                <label class="export-option">
+                    <input type="radio" name="exportType" value="selected">
+                    <span>Export Selected Only</span>
+                </label>
+            </div>
+            <div class="format-options">
+                <label for="formatSelect">Export Format:</label>
+                <select id="formatSelect" class="format-select">
+                    <option value="json">JSON</option>
+                    <option value="csv">CSV</option>
+                </select>
+            </div>
+        </div>
+        <footer class="modal-footer">
+            <button id="cancelExport" class="btn secondary-btn">Cancel</button>
+            <button id="confirmExport" class="btn primary-btn">Export</button>
+        </footer>
+    </div>
+</div>
