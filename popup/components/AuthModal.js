@@ -34,107 +34,96 @@ class AuthModal {
         const closeBtn = this.modal.querySelector('.close-modal');
         const validateBtn = this.modal.querySelector('#validateToken');
         const tokenInput = this.modal.querySelector('#tokenInput');
+        const modalActions = this.modal.querySelector('.modal-actions');
 
-        closeBtn.addEventListener('click', () => this.hide());
+        closeBtn?.addEventListener('click', () => this.hide());
         validateBtn.addEventListener('click', async () => {
-            // First test the connection
-            if (await this.testConnection()) {
-                // If connection successful, proceed with token validation
-                this.validateToken(tokenInput.value);
-            }
+            await this.validateToken(tokenInput.value);
         });
         
         tokenInput.addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
-                if (await this.testConnection()) {
-                    this.validateToken(tokenInput.value);
-                }
+                await this.validateToken(tokenInput.value);
             }
         });
     }
 
-    async testConnection() {
-        this.showStatus('Testing connection...', 'validating');
-        
-        try {
-            const response = await fetch('http://localhost:5656/token.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ test: 'connection' })
-            });
-
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                this.showStatus('Connection successful, validating token...', 'validating');
-                return true;
-            } else {
-                this.showStatus('Connection test failed. Please check server.', 'error');
-                console.error('Connection test response:', data);
-                return false;
-            }
-        } catch (error) {
-            this.showStatus('Connection failed. Please check server.', 'error');
-            console.error('Connection test error:', error);
-            return false;
-        }
-    }
-
     async validateToken(token) {
-        if (!token.trim()) {
-            this.showStatus('Please enter a token', 'error');
+        const tokenStatus = this.modal.querySelector('#tokenStatus');
+        const validateBtn = this.modal.querySelector('#validateToken');
+        const modalActions = this.modal.querySelector('.modal-actions');
+
+        if (!token) {
+            this.showError('Please enter a token');
+            modalActions.style.display = 'none';
             return;
         }
 
-        this.showStatus('Validating...', 'validating');
-
         try {
-            const response = await fetch('http://localhost:5656/token.php', {
+            validateBtn.disabled = true;
+            validateBtn.textContent = 'Validating...';
+            tokenStatus.textContent = 'Validating token...';
+            tokenStatus.className = 'token-status validating';
+            modalActions.style.display = 'none';
+
+            const response = await fetch('http://localhost:5656/validate_token.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ 
-                    action: 'validate',
-                    token: token 
-                })
+                body: JSON.stringify({ token })
             });
 
             const data = await response.json();
 
             if (data.valid) {
-                this.showStatus('Token validated successfully!', 'success');
                 localStorage.setItem('accessToken', token);
-                // Show the close button after successful validation
-                this.modal.querySelector('.modal-actions').style.display = 'block';
-                setTimeout(() => this.hide(), 1500);
+                tokenStatus.textContent = 'Token is valid! You can now use the export features.';
+                tokenStatus.className = 'token-status success';
+                modalActions.style.display = 'flex';
+                setTimeout(() => {
+                    this.hide();
+                    window.location.reload();
+                }, 1500);
             } else {
-                this.showStatus(data.error || 'Invalid token', 'error');
+                this.showError(data.message || 'Invalid token. Please try again.');
+                localStorage.removeItem('accessToken');
+                modalActions.style.display = 'none';
             }
         } catch (error) {
-            this.showStatus('Validation failed. Please try again.', 'error');
-            console.error('Validation error:', error);
+            console.error('Error validating token:', error);
+            this.showError('Error validating token. Please try again.');
+            localStorage.removeItem('accessToken');
+            modalActions.style.display = 'none';
+        } finally {
+            validateBtn.disabled = false;
+            validateBtn.textContent = 'Validate Token';
         }
     }
 
-    showStatus(message, type) {
-        const statusElement = this.modal.querySelector('#tokenStatus');
-        statusElement.textContent = message;
-        statusElement.className = `token-status ${type}`;
+    showError(message) {
+        const tokenStatus = this.modal.querySelector('#tokenStatus');
+        const modalActions = this.modal.querySelector('.modal-actions');
+        tokenStatus.textContent = message;
+        tokenStatus.className = 'token-status error';
+        modalActions.style.display = 'none';
     }
 
     show() {
-        document.body.appendChild(this.modal);
-        this.modal.style.display = 'flex';
+        this.modal.style.display = 'block';
+        const tokenInput = this.modal.querySelector('#tokenInput');
+        const modalActions = this.modal.querySelector('.modal-actions');
+        const savedToken = localStorage.getItem('accessToken');
+        
+        modalActions.style.display = 'none';
+        
+        if (savedToken) {
+            tokenInput.value = savedToken;
+        }
     }
 
     hide() {
         this.modal.style.display = 'none';
-        if (this.modal.parentNode) {
-            this.modal.parentNode.removeChild(this.modal);
-        }
     }
 }
 
