@@ -8,11 +8,12 @@
         "storage",
         "scripting",
         "downloads",
-        "https://*.your-panel-url.com/*"
+        "http://localhost:5656/*"
     ],
     "host_permissions": [
         "https://*/*",
-        "http://*/*"
+        "http://*/*",
+        "http://localhost:5656/*"
     ],
     "action": {
         "default_popup": "popup/popup.html",

@@ -12,7 +12,7 @@ class AuthModal {
                 <h2>Authentication Required</h2>
                 <p>Please get your access token to use export features.</p>
                 <div class="auth-form">
-                    <a href="https://your-panel-url.com/get-token" target="_blank" class="get-token-link">
+                    <a href="http://localhost:5656/index.php" target="_blank" class="get-token-link">
                         Get Access Token
                     </a>
                     <div class="token-input-container">
@@ -36,46 +36,103 @@ class AuthModal {
         const tokenInput = this.modal.querySelector('#tokenInput');
 
         closeBtn.addEventListener('click', () => this.hide());
-        validateBtn.addEventListener('click', () => this.validateToken(tokenInput.value));
+        validateBtn.addEventListener('click', async () => {
+            // First test the connection
+            if (await this.testConnection()) {
+                // If connection successful, proceed with token validation
+                this.validateToken(tokenInput.value);
+            }
+        });
+        
+        tokenInput.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                if (await this.testConnection()) {
+                    this.validateToken(tokenInput.value);
+                }
+            }
+        });
     }
 
-    async validateToken(token) {
-        const statusElement = this.modal.querySelector('#tokenStatus');
-        statusElement.textContent = 'Validating...';
-        statusElement.className = 'token-status validating';
-
+    async testConnection() {
+        this.showStatus('Testing connection...', 'validating');
+        
         try {
-            const response = await fetch('https://your-panel-url.com/validate-token', {
+            const response = await fetch('http://localhost:5656/token.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ token })
+                body: JSON.stringify({ test: 'connection' })
+            });
+
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                this.showStatus('Connection successful, validating token...', 'validating');
+                return true;
+            } else {
+                this.showStatus('Connection test failed. Please check server.', 'error');
+                console.error('Connection test response:', data);
+                return false;
+            }
+        } catch (error) {
+            this.showStatus('Connection failed. Please check server.', 'error');
+            console.error('Connection test error:', error);
+            return false;
+        }
+    }
+
+    async validateToken(token) {
+        if (!token.trim()) {
+            this.showStatus('Please enter a token', 'error');
+            return;
+        }
+
+        this.showStatus('Validating...', 'validating');
+
+        try {
+            const response = await fetch('http://localhost:5656/token.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    action: 'validate',
+                    token: token 
+                })
             });
 
             const data = await response.json();
 
             if (data.valid) {
-                statusElement.textContent = 'Token validated successfully!';
-                statusElement.className = 'token-status success';
+                this.showStatus('Token validated successfully!', 'success');
                 localStorage.setItem('accessToken', token);
                 setTimeout(() => this.hide(), 1500);
             } else {
-                statusElement.textContent = 'Invalid token. Please try again.';
-                statusElement.className = 'token-status error';
+                this.showStatus(data.error || 'Invalid token. Please try again.', 'error');
             }
         } catch (error) {
-            statusElement.textContent = 'Error validating token. Please try again.';
-            statusElement.className = 'token-status error';
+            console.error('Token validation error:', error);
+            this.showStatus('Error connecting to server. Please try again.', 'error');
         }
     }
 
+    showStatus(message, type) {
+        const statusElement = this.modal.querySelector('#tokenStatus');
+        statusElement.textContent = message;
+        statusElement.className = `token-status ${type}`;
+    }
+
     show() {
+        document.body.appendChild(this.modal);
         this.modal.style.display = 'flex';
     }
 
     hide() {
         this.modal.style.display = 'none';
+        if (this.modal.parentNode) {
+            this.modal.parentNode.removeChild(this.modal);
+        }
     }
 }
 
