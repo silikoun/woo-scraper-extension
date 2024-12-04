@@ -21,7 +21,7 @@ class AuthModal {
                     </div>
                     <div id="tokenStatus" class="token-status"></div>
                 </div>
-                <div class="modal-actions">
+                <div class="modal-actions" style="display: none;">
                     <button class="close-modal">Close</button>
                 </div>
             </div>
@@ -107,13 +107,15 @@ class AuthModal {
             if (data.valid) {
                 this.showStatus('Token validated successfully!', 'success');
                 localStorage.setItem('accessToken', token);
+                // Show the close button after successful validation
+                this.modal.querySelector('.modal-actions').style.display = 'block';
                 setTimeout(() => this.hide(), 1500);
             } else {
-                this.showStatus(data.error || 'Invalid token. Please try again.', 'error');
+                this.showStatus(data.error || 'Invalid token', 'error');
             }
         } catch (error) {
-            console.error('Token validation error:', error);
-            this.showStatus('Error connecting to server. Please try again.', 'error');
+            this.showStatus('Validation failed. Please try again.', 'error');
+            console.error('Validation error:', error);
         }
     }
 
