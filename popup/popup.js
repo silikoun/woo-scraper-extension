@@ -143,7 +143,12 @@ function initializeButtons() {
     // Initialize export button
     const exportBtn = document.getElementById('exportSelected');
     if (exportBtn) {
-        exportBtn.addEventListener('click', () => {
+        exportBtn.addEventListener('click', async () => {
+            if (!await checkAuthToken()) {
+                authModal.show();
+                return;
+            }
+
             const modal = document.getElementById('exportModal');
             const activeTab = document.querySelector('.tab-btn.active');
             const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
@@ -1203,7 +1208,7 @@ function setupExportModal() {
     // Update field options when modal is shown
     const exportBtn = document.getElementById('exportSelected');
     if (exportBtn) {
-        exportBtn.addEventListener('click', () => {
+        exportBtn.addEventListener('click', async () => {
             const activeTab = document.querySelector('.tab-btn.active');
             const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
 
@@ -1393,8 +1398,64 @@ function setLoading(loading) {
     }
 }
 
+// Initialize auth modal
+let authModal;
+
+async function initializeAuthModal() {
+    const { AuthModal } = await import('./components/AuthModal.js');
+    authModal = new AuthModal();
+    document.body.appendChild(authModal.modal);
+}
+
+// Function to check if user has valid token
+async function checkAuthToken() {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+        return false;
+    }
+    
+    try {
+        const response = await fetch('https://your-panel-url.com/validate-token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ token })
+        });
+        
+        const data = await response.json();
+        return data.valid;
+    } catch (error) {
+        console.error('Error validating token:', error);
+        return false;
+    }
+}
+
 // Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await initializeAuthModal();
+    
+    // Modify the export functionality to check for authentication
+    const exportBtn = document.getElementById('exportSelected');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', async (e) => {
+            if (!await checkAuthToken()) {
+                authModal.show();
+                return;
+            }
+            
+            // Original export functionality
+            const modal = document.getElementById('exportModal');
+            modal.style.display = 'flex';
+            
+            const activeTab = document.querySelector('.tab-btn.active');
+            const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
+            
+            // Rest of your existing export logic
+        });
+    }
+    
+    // Rest of your existing initialization code
     setupExportModal();
     
     // Set up tab switching
