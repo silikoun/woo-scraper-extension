@@ -1,0 +1,30 @@
+<div class="modal" id="authModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Authentication Required</h2>
+            <button class="close-button">
+                <span class="material-icons">close</span>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="token-section">
+                <p class="token-description">Please get your access token to use export features.</p>
+                <a href="#" class="get-token-link" id="getAccessToken">
+                    <span class="material-icons">vpn_key</span>
+                    Get Access Token
+                </a>
+                <div class="input-group">
+                    <div class="input-wrapper">
+                        <span class="material-icons input-icon">key</span>
+                        <input type="text" id="tokenInput" class="token-input" placeholder="Enter your access token">
+                    </div>
+                    <button id="validateTokenBtn" class="btn primary">
+                        <span class="material-icons">check_circle</span>
+                        Validate Token
+                    </button>
+                </div>
+                <div id="tokenStatus" class="token-status"></div>
+            </div>
+        </div>
+    </div>
+</div>

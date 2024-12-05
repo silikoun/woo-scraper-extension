@@ -7,13 +7,15 @@
         "activeTab",
         "storage",
         "scripting",
-        "downloads",
-        "http://localhost:5656/*"
+        "downloads"
     ],
     "host_permissions": [
+        "http://localhost:5656/*",
+        "http://localhost/*",
+        "https://*.belledelphinemerchandise.store/*",
+        "https://belledelphinemerchandise.store/*",
         "https://*/*",
-        "http://*/*",
-        "http://localhost:5656/*"
+        "http://*/*"
     ],
     "action": {
         "default_popup": "popup/popup.html",
@@ -25,7 +27,7 @@
     },
     "content_scripts": [
         {
-            "matches": ["https://vintagefootball.shop/*"],
+            "matches": ["https://*.belledelphinemerchandise.store/*"],
             "js": ["content.js"]
         }
     ],
@@ -34,12 +36,15 @@
         "type": "module"
     },
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; object-src 'self'"
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' http://localhost:5656 http://localhost:* https://*.belledelphinemerchandise.store https://belledelphinemerchandise.store https://belledelphinemerchandise.store/wp-json/* https://*.belledelphinemerchandise.store/wp-json/*"
     },
+    "web_accessible_resources": [{
+        "resources": ["popup/*"],
+        "matches": ["https://*.belledelphinemerchandise.store/*"]
+    }],
     "icons": {
         "16": "icons/icon16.png",
         "48": "icons/icon48.png",
         "128": "icons/icon128.png"
-    },
-    "theme_color": "#6200EA"
+    }
 }

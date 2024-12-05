@@ -849,9 +849,9 @@ function displayCollections() {
 
     // Clear existing content
     container.innerHTML = '';
-
-    if (!collections.length) {
-        container.innerHTML = '<div class="empty-state">No collections found. Try scraping first.</div>';
+    
+    if (collections.length === 0) {
+        container.innerHTML = '<div class="no-results">No collections found</div>';
         return;
     }
 
@@ -1254,13 +1254,6 @@ function setupExportModal() {
                 return;
             }
 
-            // Check token validity before export
-            if (!window.authManager || !await window.authManager.checkAuth()) {
-                log('Please enter a valid API token to export', 'warning', 'warning');
-                window.authManager?.showModal();
-                return;
-            }
-
             const selectedSet = activeTab.id === 'productsTab' ? selectedProducts : selectedCollections;
             const allItems = activeTab.id === 'productsTab' ? products : collections;
 
@@ -1442,7 +1435,7 @@ async function checkAuthToken() {
 document.addEventListener('DOMContentLoaded', async () => {
     await initializeAuthModal();
     
-    // Modify the export functionality to check for authentication
+    // Initialize export button
     const exportBtn = document.getElementById('exportSelected');
     if (exportBtn) {
         exportBtn.addEventListener('click', async (e) => {
@@ -1451,72 +1444,41 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             
-            // Original export functionality
             const modal = document.getElementById('exportModal');
             modal.style.display = 'flex';
             
             const activeTab = document.querySelector('.tab-btn.active');
             const selectedSet = activeTab?.id === 'productsTab' ? selectedProducts : selectedCollections;
-            
-            // Rest of your existing export logic
         });
     }
     
-    // Rest of your existing initialization code
-    setupExportModal();
-    
-    // Set up tab switching
-    const tabButtons = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
-    
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            // Remove active class from all buttons and contents
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            tabContents.forEach(content => content.classList.remove('active'));
-            
-            // Add active class to clicked button
-            button.classList.add('active');
-            
-            // Show corresponding content
-            const contentId = button.id.replace('Tab', 'Content');
-            document.getElementById(contentId)?.classList.add('active');
-
-            // Clear selections when switching tabs
-            if (button.id === 'productsTab') {
-                selectedCollections.clear();
-            } else if (button.id === 'collectionsTab') {
-                selectedProducts.clear();
-            }
-            updateButtonStates();
-            updateSelectedCount();
-        });
-    });
-
     // Initialize scrape button
     const scrapeButton = document.getElementById('scrapeButton');
     if (scrapeButton) {
         scrapeButton.addEventListener('click', async () => {
-            if (isLoading) return;
-            
             try {
                 setLoading(true);
                 const activeTab = document.querySelector('.tab-btn.active');
-                if (activeTab.id === 'productsTab') {
+                
+                if (activeTab?.id === 'productsTab') {
                     await scrapeProducts();
-                } else if (activeTab.id === 'collectionsTab') {
+                    displayProducts();
+                } else if (activeTab?.id === 'collectionsTab') {
                     await scrapeCollectionsWithUI();
+                    displayCollections();
                 }
             } catch (error) {
-                log(`Error: ${error.message}`, 'error', 'error');
-                console.error('Scraping error:', error);
+                console.error('Error during scraping:', error);
+                log('Error: ' + error.message, 'error', 'error');
             } finally {
                 setLoading(false);
             }
         });
     }
-
-    // Initialize other UI elements
+    
+    // Initialize UI elements
+    setupExportModal();
+    setupTabs();
     initializeButtons();
     updateButtonStates();
 });

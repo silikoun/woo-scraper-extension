@@ -19,6 +19,24 @@ chrome.runtime.onStartup.addListener(() => {
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log('Received message:', request);
+
+    if (request.action === 'validateToken') {
+        handleTokenValidation(request.token)
+            .then(response => {
+                console.log('Token validation response:', response);
+                sendResponse(response);
+            })
+            .catch(error => {
+                console.error('Token validation error:', error);
+                sendResponse({ 
+                    success: false, 
+                    error: error.message || 'Token validation failed' 
+                });
+            });
+        return true; // Keep the message channel open for async response
+    }
+
     if (request.action === 'saveData') {
         try {
             chrome.storage.local.set({ scrapedData: request.data })
@@ -31,7 +49,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } catch (error) {
             sendResponse({ success: false, error: error.message });
         }
-        return true; // Keep the message channel open for async response
+        return true;
     }
 
     if (request.action === 'getData') {
@@ -95,3 +113,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 });
+
+async function handleTokenValidation(token) {
+    try {
+        const response = await fetch('http://localhost:5656/api/auth/validate_token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ token })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.valid) {
+            await chrome.storage.local.set({ 
+                validatedToken: token,
+                userData: data.user_data
+            });
+        }
+
+        return {
+            success: data.valid,
+            message: data.message,
+            userData: data.user_data
+        };
+    } catch (error) {
+        console.error('Token validation error:', error);
+        throw new Error(error.message || 'Failed to validate token');
+    }
+}
