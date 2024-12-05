@@ -376,7 +376,61 @@
             font-size: 14px;
             color: #4a5568;
         }
+/* Auth Modal Styles */
+.token-section {
+    margin: 20px 0;
+}
 
+.token-section p {
+    margin-bottom: 15px;
+    color: #4a5568;
+}
+
+.token-input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.token-input:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.2);
+}
+
+.token-status {
+    margin: 10px 0;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.token-status.error {
+    background-color: #fff5f5;
+    color: #c53030;
+}
+
+.token-status.success {
+    background-color: #f0fff4;
+    color: #2f855a;
+}
+
+#validateTokenBtn {
+    width: 100%;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+#validateTokenBtn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
         .log-container {
             position: fixed;
             bottom: 20px;
@@ -699,6 +753,29 @@
         </div>
 
         <div class="content">
+
+            <!-- Auth Modal -->
+<div id="authModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>API Token Required</h2>
+            <button class="close">
+                <span class="material-icons">close</span>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="token-section">
+                <p>Please enter your API token to export data:</p>
+                <input type="text" id="tokenInput" class="token-input" placeholder="Enter your API token">
+                <div id="tokenStatus" class="token-status"></div>
+                <button id="validateTokenBtn" class="btn primary">
+                    <span class="material-icons">check_circle</span>
+                    Validate Token
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
             <!-- Tabs -->
             <div class="tabs">
                 <button id="productsTab" class="tab-btn active">
@@ -851,7 +928,11 @@
             </div>
             <div class="log-content"></div>
         </div>
-
+        <script type="module">
+            import { AuthManager } from './auth.js';
+            window.authManager = new AuthManager();
+            window.authManager.initialize();
+        </script>
         <script src="popup.js"></script>
     </body>
 </html>

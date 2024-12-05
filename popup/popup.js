@@ -1254,6 +1254,13 @@ function setupExportModal() {
                 return;
             }
 
+            // Check token validity before export
+            if (!window.authManager || !await window.authManager.checkAuth()) {
+                log('Please enter a valid API token to export', 'warning', 'warning');
+                window.authManager?.showModal();
+                return;
+            }
+
             const selectedSet = activeTab.id === 'productsTab' ? selectedProducts : selectedCollections;
             const allItems = activeTab.id === 'productsTab' ? products : collections;
 
