@@ -1146,3 +1146,176 @@ main {
     font-size: 14px;
     color: var(--text-color);
 }
+
+/* Auth Modal Styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    width: 100%;
+    max-width: 480px;
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #2d3748;
+    margin: 0;
+}
+
+.close-button {
+    background: none;
+    border: none;
+    color: #a0aec0;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.close-button:hover {
+    background: #f7fafc;
+    color: #4a5568;
+}
+
+.modal-body {
+    padding: 24px;
+}
+
+.token-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.token-description {
+    color: #4a5568;
+    margin: 0;
+    font-size: 15px;
+}
+
+.get-token-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #4299e1;
+    text-decoration: none;
+    font-weight: 500;
+    padding: 8px 12px;
+    background: #ebf8ff;
+    border-radius: 6px;
+    transition: all 0.2s;
+    width: fit-content;
+}
+
+.get-token-link:hover {
+    background: #bee3f8;
+    color: #2b6cb0;
+}
+
+.input-group {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.input-wrapper {
+    position: relative;
+    flex-grow: 1;
+}
+
+.input-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #a0aec0;
+    font-size: 20px;
+}
+
+.token-input {
+    width: 100%;
+    padding: 12px 12px 12px 44px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #2d3748;
+    transition: all 0.2s;
+}
+
+.token-input:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15);
+}
+
+.token-input::placeholder {
+    color: #a0aec0;
+}
+
+.token-status {
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.token-status.error {
+    background: #fff5f5;
+    color: #c53030;
+    border: 1px solid #feb2b2;
+}
+
+.token-status.success {
+    background: #f0fff4;
+    color: #2f855a;
+    border: 1px solid #9ae6b4;
+}
+
+#validateTokenBtn {
+    padding: 12px 20px;
+    white-space: nowrap;
+}
+
+#validateTokenBtn .material-icons {
+    font-size: 18px;
+}

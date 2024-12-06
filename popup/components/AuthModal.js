@@ -66,12 +66,17 @@ class AuthModal {
             tokenStatus.className = 'token-status validating';
             modalActions.style.display = 'none';
 
-            const response = await fetch('http://localhost:5656/validate_token.php', {
+            const response = await fetch('https://panel-production-5838.up.railway.app/validate_token.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({ token })
+                body: JSON.stringify({ 
+                    token: token,
+                    client: 'extension'
+                })
             });
 
             const data = await response.json();
