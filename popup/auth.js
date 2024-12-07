@@ -3,7 +3,7 @@ export class AuthManager {
         this.accessToken = null;
         this.refreshToken = null;
         this.isAuthenticated = false;
-        this.API_URL = 'http://localhost:5656';
+        this.API_URL = 'https://kgqwiwjayaydewyuygxt.supabase.co';
         this.modal = null;
         this.tokenRefreshInterval = null;
     }
@@ -158,46 +158,22 @@ export class AuthManager {
     }
 
     initializeUI() {
-        // Initialize modal elements
-        const modal = this.modal;
-        const closeBtn = modal?.querySelector('.close-button');
-        const validateBtn = modal?.querySelector('#validateTokenBtn');
-        const tokenInput = modal?.querySelector('#tokenInput');
-
-        console.log('Modal elements:', { modal, closeBtn, validateBtn, tokenInput });
-
-        // Close button handler
-        if (closeBtn) {
-            closeBtn.onclick = () => this.hideModal();
+        console.log('Setting up validate button handler');
+        
+        // Get token input and validate button
+        const tokenInput = this.modal?.querySelector('#tokenInput');
+        const validateBtn = this.modal?.querySelector('#validateToken');
+        const getTokenLink = this.modal?.querySelector('.get-token-link');
+        
+        if (getTokenLink) {
+            getTokenLink.href = `${this.API_URL}/dashboard.php`;
         }
 
-        // Click outside modal to close
-        if (modal) {
-            window.onclick = (event) => {
-                if (event.target === modal) {
-                    this.hideModal();
-                }
-            };
-        }
-
-        // Enable paste on token input
-        if (tokenInput) {
-            tokenInput.addEventListener('paste', (e) => {
-                e.stopPropagation();
-            });
-            
-            // Also enable keyboard input
-            tokenInput.addEventListener('keydown', (e) => {
-                e.stopPropagation();
-            });
-        }
-
-        // Validate button handler
         if (validateBtn && tokenInput) {
-            console.log('Setting up validate button handler');
             validateBtn.onclick = async () => {
-                console.log('Validate button clicked');
-                const token = tokenInput.value.trim();
+                const token = tokenInput.value?.trim();
+                console.log('Validating token:', token);
+
                 if (!token) {
                     this.showTokenStatus('Please enter a token', 'error');
                     return;
@@ -219,7 +195,7 @@ export class AuthManager {
                     }
                 } catch (error) {
                     console.error('Validation error:', error);
-                    this.showTokenStatus('Error validating token', 'error');
+                    this.showTokenStatus(error.message || 'Error validating token', 'error');
                 } finally {
                     validateBtn.disabled = false;
                     validateBtn.innerHTML = originalText;
@@ -268,44 +244,47 @@ export class AuthManager {
 
             await chrome.storage.local.set({ lastTokenCheck: Date.now() });
 
-            const response = await fetch(`${this.API_URL}/api/auth/validate_token`, {
+            const response = await fetch(`${this.API_URL}/validate_token.php`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ token })
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                console.error('Token validation failed:', response.status, response.statusText);
+                if (response.status === 500) {
+                    throw new Error('Server error. Please try again later.');
+                }
+                throw new Error(`Validation failed (${response.status})`);
             }
 
             const data = await response.json();
             console.log('Token validation response:', data);
             
-            if (data.status === 'success' && data.valid) {
+            if (data.valid) {
                 // Store the validated token
-                await this.storeTokens(token, token); // Using same token for both since we don't have refresh token yet
+                await this.storeTokens(token, token);
                 this.accessToken = token;
                 this.refreshToken = token;
                 this.isAuthenticated = true;
                 
                 // Store user data if available
-                if (data.user_data) {
-                    await chrome.storage.local.set({ userData: data.user_data });
+                if (data.user) {
+                    await chrome.storage.local.set({ userData: data.user });
                 }
                 
                 return true;
             }
 
-            console.error('Token validation failed:', data.message);
-            await this.clearTokens();
-            return false;
+            throw new Error(data.message || 'Invalid token');
         } catch (error) {
             console.error('Token validation error:', error);
-            this.showTokenStatus(error.message || 'Error validating token', 'error');
-            return false;
+            await this.clearTokens();
+            throw error;
         }
     }
 
